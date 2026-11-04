@@ -13,5 +13,10 @@ export async function GET(req: Request) {
   if (offset + limit > MAX_DEPTH) return Response.json({ detail: `results are limited to the first ${MAX_DEPTH}; narrow the search` }, { status: 400 });
   const f = Object.fromEntries(["brand", "make", "segment", "category", "min_price", "max_price"].map((k) => [k, u.get(k) ?? ""]));
   if ((f.min_price && isNaN(Number(f.min_price))) || (f.max_price && isNaN(Number(f.max_price)))) return Response.json({ detail: "bad filter value" }, { status: 400 });
-  return Response.json(await search(q, f, limit, offset));
+  try {
+    return Response.json(await search(q, f, limit, offset));
+  } catch (e: any) {
+    console.error("search failed", e?.code ?? e?.message);
+    return Response.json({ detail: "database unavailable", code: String(e?.code ?? "").slice(0, 40) }, { status: 503 });
+  }
 }
