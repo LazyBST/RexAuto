@@ -1,0 +1,9 @@
+{
+  "searchableAttributes": ["part_no_norm", "part_no", "ref_part_nos_norm", "description", "description_expanded", "category", "oem_name", "application", "brand"],
+  "filterableAttributes": ["brand", "oem_name", "segment", "category", "mrp"],
+  "sortableAttributes": ["mrp"],
+  "displayedAttributes": ["id", "part_no", "description", "brand", "oem_name", "oem_raw", "application", "category", "segment", "mrp", "variant_label", "image_url", "slug"],
+  "rankingRules": ["words", "typo", "proximity", "attribute", "sort", "exactness"],
+  "typoTolerance": {"enabled": true, "minWordSizeForTypos": {"oneTypo": 5, "twoTypos": 9}, "disableOnAttributes": ["part_no_norm", "part_no", "ref_part_nos_norm"]},
+  "pagination": {"maxTotalHits": 2000}
+}
