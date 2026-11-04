@@ -485,7 +485,7 @@ Moved to NEEDS HUMAN: E6 (category granularity is a taxonomy decision), K2 (Dock
 
 | Section | Items | PASS | FAIL | NEEDS HUMAN | Passed % |
 |---|---|---|---|---|---|
-| A Field coverage | 14 | 4 | 6 | 4 | 29 % |
+| A Field coverage | 14 | 4 | 5 | 5 | 29 % |
 | B Source vs saved | 5 | 4 | 1 | 0 | 80 % |
 | C Minimum display | 5 | 3 | 0 | 2 | 60 % |
 | D Extraction accuracy | 13 | 7 | 0 | 6 | 54 % |
@@ -496,13 +496,13 @@ Moved to NEEDS HUMAN: E6 (category granularity is a taxonomy decision), K2 (Dock
 | I Search quality | 14 | 11 | 1 | 2 | 79 % |
 | J Security | 10 | 8 | 1 | 1 | 80 % |
 | K Operations | 6 | 1 | 3 | 2 | 17 % |
-| **Total** | **110** | **74** | **14** | **22** | **67.3 %** |
+| **Total** | **110** | **74** | **13** | **23** | **67.3 %** |
 
 (A2, A3 and C3 are fixed in the final fresh load: 0 blank descriptions, 0 null categories; F10 also passes now.)
 
 ## Still failing or open
 
-- **A14 price basis** (9,591 products `unknown`): needs your answer per brand in `data/config/price_basis.csv`; `verify` fails until then.
+- **A14 price basis**: now a switch on each price list (`ingest set-gst`), unknown for Uno Minda, Neolite, Car International and Meko until you flip it; no resync needed, so this no longer blocks the load (status: NEEDS HUMAN).
 - **A5, A6, A8, A9, A11** are limits of what the sources print, not bugs (no make on generic parts, no HSN in Meko/Neolite/Pensol, MOQ only from Uno Minda, photos only for 227 Meko pumps).
 - **B3** `Neo-Catelogue Design-1.pdf` (bulb fitment per Neolite code) is not ingested; the `attributes` column and update-only path are ready for it.
 - **G10 / K3** no CI; **H9 / J5 / K5** no admin login or screens yet (code only, no data change); **K4** backups are Supabase's own.

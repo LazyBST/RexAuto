@@ -26,8 +26,12 @@ SITE_NAME=<your shop name>
 
 ## 2. Before loading: decide the two things that are cheap now and costly later
 
-- **Does each brand's MRP include GST?** Edit `data/config/price_basis.csv` (`incl_tax`, `ex_tax` or `unknown`; set `status` to
-  `confirmed`). `verify` fails while any product is `unknown`. Changing it later means re-running every batch.
+- **Does each brand's MRP include GST?** You do not have to decide now. It is a yes / no / unknown switch on each price list
+  (`import_batches.price_includes_gst`), and the site shows "(incl. GST)", "(excl. GST)" or plain "MRP" from it. Fras-le (footer:
+  excludes GST) and Pensol (footer: includes all taxes) are set from their footers; the others start as unknown. Flip any of them
+  later, no resync, effective immediately:
+  `.venv/bin/python -m ingest set-gst --brand uno-minda --includes yes` (or `--batch <id>`, `no`, `unknown`).
+  Every change is recorded in the audit log.
 - **Make and category names.** `data/config/make_canonical.csv` / `category_canonical.csv` hold the merges applied on every
   load (e.g. Leyland → Ashok Leyland). Add rows there, not in the database.
 
@@ -66,6 +70,7 @@ then uses the real visitor address). The app is read-only; there is no admin log
 | Fitments empty, untracked, no year range | new `fitments` table (make, model, variant, year range, engine), tracked and restored like cross references |
 | Supersession had no direction | `cross_refs.direction` |
 | Make / category spelled differently per brand | canonical maps applied on every load |
+| GST basis only guessable per product | switch on the price list; `products.mrp_batch_id` says which list a price came from |
 | Unindexed foreign keys, no search index | indexes added; trigram index created automatically where `pg_trgm` exists (Supabase) |
 | History could be emptied with TRUNCATE | blocked |
 | `cross_refs` readable even for hidden products | public policies check the product is published |

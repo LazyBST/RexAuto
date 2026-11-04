@@ -140,7 +140,7 @@ class FrasLeProfile:
         data = {
             "part_no": part_no, "part_no_norm": nz.norm_part(part_no), "description": desc, "category": "Brake Linings",
             "segment": seg, "oem_name": oem_name, "oem_raw": oem_raw or None, "application": st["app"] or None,
-            "variant_label": variant, "mrp": mrp, "mrp_prev": None, "price_basis": "ex_tax", "gst_pct": None,
+            "variant_label": variant, "mrp": mrp, "mrp_prev": None, "gst_pct": None,
             "hsn": hsn, "moq": None, "pack_qty": int(pack) if pack else None, "unit": "set", "image_url": None,
             "attributes": {k: v for k, v in {"group_no": st["group"], "position": t["fr"], "pcs_per_set": int(pcs) if pcs else None}.items() if v},
             "needs_review": False, "review_note": None, "source_page": pno, "source_row": st["n"],

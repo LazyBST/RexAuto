@@ -1,6 +1,12 @@
 -- Pre-launch schema hardening. Everything here is cheap before real data is loaded into the hosted database and
 -- expensive (data-rewriting) afterwards.
 
+-- 0. GST basis lives on the price list (batch), not on each product, and can be flipped later without a resync
+alter table products drop column price_basis;
+alter table import_batches add column price_includes_gst boolean;                       -- null = not known yet
+alter table products add column mrp_batch_id uuid references import_batches(id);        -- the batch whose file the MRP came from
+create index products_mrp_batch_id_idx on products (mrp_batch_id);
+
 -- 1. Source columns that used to be dropped, price-list dates, and protection for hand edits ---------------------------
 alter table products add column attributes jsonb not null default '{}';        -- source-specific extras (class, product type, NPD status, pcs per set ...)
 alter table products add column price_effective_from date;                     -- "w.e.f." date of the price list the MRP came from

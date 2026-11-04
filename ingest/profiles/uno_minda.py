@@ -241,7 +241,6 @@ class UnoMindaProfile:
             "variant_label": "",
             "mrp": mrp,
             "mrp_prev": None,
-            "price_basis": nz.price_basis(BRAND_SLUG),
             "gst_pct": gst,
             "hsn": hsn or None,
             "moq": int(moq) if moq is not None else None,

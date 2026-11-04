@@ -174,7 +174,7 @@ class NeoliteProfile:
             "part_no": code, "part_no_norm": nz.norm_part(code), "description": desc or None,
             "category": self._category(desc), "segment": self._segment(sec), "oem_name": sec["make"] if sec else None,
             "oem_raw": None, "application": sec["label"] if sec else None, "variant_label": "", "mrp": mrp,
-            "mrp_prev": mrp_prev, "price_basis": nz.price_basis(BRAND_SLUG), "gst_pct": None, "hsn": None, "moq": None,
+            "mrp_prev": mrp_prev, "gst_pct": None, "hsn": None, "moq": None,
             "pack_qty": int(pack) if pack else None, "unit": unit_raw.lower() or None, "image_url": None,
             "needs_review": False, "review_note": None, "source_page": pno, "source_row": st["n"],
         }

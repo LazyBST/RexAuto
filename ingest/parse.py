@@ -11,6 +11,7 @@ import fitz
 import psycopg2.extras as ex
 
 from . import audit, canon
+from . import normalize as nz
 from .db import cursor
 from .profiles import get_profile
 from .profiles.base import HARD_FLAGS
@@ -42,10 +43,11 @@ def upload_batch(conn, brand_slug, profile_name, file_path, actor):
         raise SystemExit(f"upload refused: the file cannot be archived safely ({e})")
     get_storage().put(stored, archived)
     cur.execute("""insert into import_batches(id, brand_id, profile, parser_version, original_filename, stored_path,
-                       file_sha256, file_size_bytes, page_count, uploaded_by, stored_sha256, redacted)
-                   values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                       file_sha256, file_size_bytes, page_count, uploaded_by, stored_sha256, redacted, price_includes_gst)
+                   values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (bid, brand["id"], profile_name, profile.parser_version, path.name, stored, sha, len(archived), pages, actor,
-                 hashlib.sha256(archived).hexdigest(), bool(redact)))
+                 hashlib.sha256(archived).hexdigest(), bool(redact),
+                 {"incl_tax": True, "ex_tax": False}.get(nz.price_basis(brand_slug))))
     audit.log(cur, actor, "file_uploaded", bid, filename=path.name, sha256=sha, size=len(archived), pages=pages, stored=stored, redacted=bool(redact))
     cur.execute("select id, original_filename, uploaded_at, status from import_batches where file_sha256 = %s and id <> %s",
                 (sha, bid))
@@ -105,3 +107,22 @@ def parse_batch(conn, batch_id, actor, parse_fn=None):
         audit.log(cur, actor, "ocr_pages_flagged", batch_id, pages=ocr)
     conn.commit()
     return {"status": status, "rows": len(result.rows), "flagged": flagged}
+
+
+def set_price_includes_gst(conn, actor, includes, batch_id=None, brand_slug=None):
+    """Say whether the MRPs of a price list include GST (True / False / None = unknown). Takes effect at once everywhere the
+    price is shown; nothing is re-parsed. Either one batch, or every applied batch of a brand."""
+    cur = cursor(conn)
+    if batch_id:
+        cur.execute("select id, price_includes_gst from import_batches where id=%s", (batch_id,))
+    else:
+        cur.execute("""select b.id, b.price_includes_gst from import_batches b join brands br on br.id=b.brand_id
+                       where br.slug=%s and b.status='applied'""", (brand_slug,))
+    rows = cur.fetchall()
+    if not rows:
+        raise SystemExit("no matching batch")
+    for r in rows:
+        cur.execute("update import_batches set price_includes_gst=%s where id=%s", (includes, r["id"]))
+        audit.log(cur, actor, "price_basis_changed", r["id"], before=r["price_includes_gst"], after=includes)
+    conn.commit()
+    return len(rows)

@@ -104,3 +104,27 @@ def test_variant_labels_are_trimmed_by_the_pipeline(conn, small_pdf, parsed_smal
     cur = cursor(conn)
     cur.execute("select count(*) n from products where variant_label <> btrim(variant_label)")
     assert cur.fetchone()["n"] == 0
+
+
+def test_gst_basis_is_a_toggle_on_the_batch_and_needs_no_resync(conn, small_pdf, cached_parse):
+    from ingest import pgsearch
+    a = parse.upload_batch(conn, "uno-minda", "uno_minda", small_pdf, "t")["batch_id"]
+    parse.parse_batch(conn, a, "t", parse_fn=cached_parse)
+    ap.apply_batch(conn, a, "t")
+    cur = cursor(conn)
+    cur.execute("select price_includes_gst from import_batches where id=%s", (a,))
+    assert cur.fetchone()["price_includes_gst"] is None                      # not known yet
+    snap = snapshot(conn)
+    hit = lambda: pgsearch.search(conn, "MB03012014")["hits"][0]["price_basis"]
+    assert hit() == "unknown"
+    assert parse.set_price_includes_gst(conn, "t", True, batch_id=a) == 1
+    assert hit() == "incl_tax"
+    parse.set_price_includes_gst(conn, "t", False, brand_slug="uno-minda")
+    assert hit() == "ex_tax"
+    parse.set_price_includes_gst(conn, "t", None, batch_id=a)
+    assert hit() == "unknown"
+    assert snapshot(conn) == snap                                             # no product row was touched
+    cur.execute("select count(*) n from audit_events where event_type='price_basis_changed'")
+    assert cur.fetchone()["n"] == 3
+    cur.execute("select count(*) n from products where mrp is not null and mrp_batch_id is null")
+    assert cur.fetchone()["n"] == 0

@@ -14,7 +14,7 @@ from .db import cursor
 from .profiles.base import EXTRA_FIELDS, HARD_FLAGS, PRODUCT_FIELDS
 
 LOCK_KEY = 7001  # serialises every writer of `products` (apply, resync, delete)
-DEFAULTS = {"price_basis": "unknown", "variant_label": "", "needs_review": False, "attributes": {}}
+DEFAULTS = {"variant_label": "", "needs_review": False, "attributes": {}}
 POSITION_FIELDS = {"source_page", "source_row"}
 COMPARE_FIELDS = sorted(PRODUCT_FIELDS - POSITION_FIELDS)
 JSON_COLS = {"attributes"}
@@ -162,27 +162,29 @@ def apply_batch(conn, batch_id, actor, run_type=None, remove_missing=False):
         for item in inserts:
             pid = str(uuid.uuid4())
             new_ids.append(pid)
-            by_cols.setdefault(_cols(item["row"]), []).append((pid, item["row"]))
+            by_cols.setdefault((_cols(item["row"]), "mrp" in item["row"]), []).append((pid, item["row"]))
             for k in CHILDREN:
                 if k in item["row"]:
                     kid_rows[k][pid] = item["row"][k]
-        for cols, items in by_cols.items():
+        for (cols, priced), items in by_cols.items():     # priced rows remember which file their MRP came from
+            head = "id, brand_id, first_batch_id, last_batch_id" + (", mrp_batch_id" if priced else "")
             ex.execute_values(
-                cur, f"insert into products (id, brand_id, first_batch_id, last_batch_id, {', '.join(cols)}) values %s",
-                [(pid, b["brand_id"], batch_id, batch_id) + tuple(_val(c, d[c]) for c in cols) for pid, d in items],
-                page_size=500)
+                cur, f"insert into products ({head}, {', '.join(cols)}) values %s",
+                [(pid, b["brand_id"], batch_id, batch_id) + ((batch_id,) if priced else ()) + tuple(_val(c, d[c]) for c in cols)
+                 for pid, d in items], page_size=500)
 
         # updates: grouped by column set, pipelined in pages
         by_cols = {}
         for item in updates:
-            by_cols.setdefault(_cols(item["row"]), []).append(item)
+            by_cols.setdefault((_cols(item["row"]), "mrp" in item["changes"]), []).append(item)
             for k in CHILDREN:
                 if k in item["changes"]:
                     kid_rows[k][str(item["product_id"])] = item["row"][k]
-        for cols, items in by_cols.items():
-            sql = f"update products set {', '.join(c + ' = %s' for c in cols)}, last_batch_id = %s, updated_at = now() where id = %s"
-            ex.execute_batch(cur, sql, [[_val(c, it["row"][c]) for c in cols] + [batch_id, str(it["product_id"])] for it in items],
-                             page_size=500)
+        for (cols, mrp_changed), items in by_cols.items():   # a changed MRP now comes from this batch's file
+            sql = (f"update products set {', '.join(c + ' = %s' for c in cols)}, last_batch_id = %s, updated_at = now()"
+                   f"{', mrp_batch_id = %s' if mrp_changed else ''} where id = %s")
+            ex.execute_batch(cur, sql, [[_val(c, it["row"][c]) for c in cols] + [batch_id] + ([batch_id] if mrp_changed else [])
+                                        + [str(it["product_id"])] for it in items], page_size=500)
         for k, rows in kid_rows.items():
             kids.write(cur, k, rows)
 

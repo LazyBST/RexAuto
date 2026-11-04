@@ -8,7 +8,9 @@ from . import normalize as nz
 from .db import cursor
 
 HAY = "coalesce(ps.text, '')"   # product_search: own columns + brand + cross references, refreshed by the batch engine
-FROM = "from products p join brands b on b.id = p.brand_id left join product_search ps on ps.product_id = p.id"
+FROM = ("from products p join brands b on b.id = p.brand_id left join product_search ps on ps.product_id = p.id "
+        "left join import_batches mb on mb.id = p.mrp_batch_id")
+BASIS = "case mb.price_includes_gst when true then 'incl_tax' when false then 'ex_tax' else 'unknown' end"
 _cache = {}
 
 
@@ -74,8 +76,8 @@ def _where(cur, q, f, exclude=None):
     return " and ".join(sql), args
 
 
-CARD = """p.id, p.part_no, p.variant_label, p.description, p.application, p.oem_name, p.oem_raw, p.category, p.segment,
-          p.mrp, p.price_basis, p.image_url, p.unit, p.pack_qty, b.name as brand, b.slug as brand_slug"""
+CARD = f"""p.id, p.part_no, p.variant_label, p.description, p.application, p.oem_name, p.oem_raw, p.category, p.segment,
+          p.mrp, {BASIS} as price_basis, p.image_url, p.unit, p.pack_qty, b.name as brand, b.slug as brand_slug"""
 
 
 def _vocab(cur):
@@ -156,7 +158,7 @@ def _search(conn, q="", filters=None, limit=30, offset=0):
 
 def product(conn, pid):
     cur = cursor(conn)
-    cur.execute(f"select p.*, b.name as brand, b.slug as brand_slug {FROM} where p.id = %s and p.status = 'published'", (pid,))
+    cur.execute(f"select p.*, {BASIS} as price_basis, b.name as brand, b.slug as brand_slug {FROM} where p.id = %s and p.status = 'published'", (pid,))
     p = cur.fetchone()
     if not p:
         return None

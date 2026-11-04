@@ -89,7 +89,7 @@ def test_every_plausible_discount_name_would_fail_the_build(name):
     assert bad_name(name)
 
 
-@pytest.mark.parametrize("name", ["gst_pct", "mrp", "mrp_prev", "part_no", "price_basis", "pack_qty", "price_effective_from",
+@pytest.mark.parametrize("name", ["gst_pct", "mrp", "mrp_prev", "part_no", "price_includes_gst", "pack_qty", "price_effective_from",
                                   "attributes", "locked_fields", "image_url", "stock_status"])
 def test_real_columns_are_not_flagged(name):
     assert not bad_name(name)

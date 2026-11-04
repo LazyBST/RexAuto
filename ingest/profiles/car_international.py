@@ -144,8 +144,7 @@ class CarInternationalProfile:
         data = {
             "part_no": part, "part_no_norm": nz.norm_part(part), "description": desc or None,
             "category": self._category(desc), "segment": segment, "oem_name": " / ".join(makes) or None,
-            "oem_raw": None, "application": ", ".join(models) or None, "variant_label": "", "mrp": mrp, "mrp_prev": None,
-            "price_basis": nz.price_basis(BRAND_SLUG), "gst_pct": gst, "hsn": hsn, "moq": None, "pack_qty": None,
+            "oem_raw": None, "application": ", ".join(models) or None, "variant_label": "", "mrp": mrp, "mrp_prev": None, "gst_pct": gst, "hsn": hsn, "moq": None, "pack_qty": None,
             "unit": unit.lower() or None, "image_url": None, "needs_review": False, "review_note": None,
             "source_page": pno, "source_row": n,
         }

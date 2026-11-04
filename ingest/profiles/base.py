@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 # The ONLY keys a profile may emit. Anything else is a bug and aborts the parse.
 PRODUCT_FIELDS = frozenset({
     "part_no", "part_no_norm", "description", "category", "segment", "oem_name", "oem_raw",
-    "application", "variant_label", "mrp", "mrp_prev", "price_basis", "gst_pct", "hsn", "moq",
+    "application", "variant_label", "mrp", "mrp_prev", "gst_pct", "hsn", "moq",
     "pack_qty", "unit", "image_url", "needs_review", "review_note", "source_page", "source_row",
     "attributes", "price_effective_from",
 })

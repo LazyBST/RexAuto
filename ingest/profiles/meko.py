@@ -62,7 +62,7 @@ class MekoProfile:
                 "part_no": part, "part_no_norm": nz.norm_part(part), "description": "Water pump assembly (Z series)",
                 "category": "Water Pumps", "segment": "HCV", "oem_name": self._find_make(app.upper(), keys), "oem_raw": None,
                 "application": app or None, "variant_label": "", "mrp": nz.to_number(price), "mrp_prev": None,
-                "price_basis": nz.price_basis(BRAND_SLUG), "gst_pct": None, "hsn": None, "moq": None, "pack_qty": None, "unit": None,
+                "gst_pct": None, "hsn": None, "moq": None, "pack_qty": None, "unit": None,
                 "image_url": None, "needs_review": False, "review_note": None, "source_page": pno,
                 "source_row": 9000 + len(rows) + 1, "cross_refs": refs,
             }
@@ -219,7 +219,7 @@ class MekoProfile:
                 "part_no": part, "part_no_norm": nz.norm_part(part), "description": nz.clean_text(sub).capitalize() or "Water pump kit",
                 "category": "Water Pump " + kind, "segment": seg, "oem_name": self._find_make(app.upper(), keys),
                 "oem_raw": div or None, "application": app or None, "variant_label": "", "mrp": mrp, "mrp_prev": None,
-                "price_basis": nz.price_basis(BRAND_SLUG), "gst_pct": None, "hsn": None, "moq": None, "pack_qty": None, "unit": None,
+                "gst_pct": None, "hsn": None, "moq": None, "pack_qty": None, "unit": None,
                 "image_url": None, "needs_review": False, "review_note": None, "source_page": pno, "source_row": int(sno),
                 "cross_refs": [],
             }
@@ -271,7 +271,7 @@ class MekoProfile:
         data = {
             "part_no": part, "part_no_norm": nz.norm_part(part), "description": desc_title,
             "category": category, "segment": seg, "oem_name": make, "oem_raw": sec, "application": app or None,
-            "variant_label": "", "mrp": mrp, "mrp_prev": None, "price_basis": nz.price_basis(BRAND_SLUG), "gst_pct": None, "hsn": None,
+            "variant_label": "", "mrp": mrp, "mrp_prev": None, "gst_pct": None, "hsn": None,
             "moq": None, "pack_qty": None, "unit": None, "image_url": None, "needs_review": False, "review_note": None,
             "source_page": pno, "source_row": int(sno), "cross_refs": refs,
         }

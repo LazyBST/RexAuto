@@ -27,7 +27,7 @@ def test_counts_and_variants(rows):
 def test_group_application_is_carried_to_every_variant(rows):
     for v, mrp in (("STD", 3474), ("OS-1", 3803), ("OS-2", 4189)):
         d = by(rows, "AFF/XL/TTS/1", v)
-        assert d["mrp"] == mrp and d["price_basis"] == "ex_tax" and d["hsn"] == "68138100"
+        assert d["mrp"] == mrp and d["hsn"] == "68138100"
         assert d["application"] == "TATA 1510/1612/2515/3516/4018 EICHER JUMBO 2016 WITH AIR BRAKE (SCAM)"
     assert by(rows, "AFF/XL/TTS/2", "STD")["description"].startswith("Brake lining set, rear")
 

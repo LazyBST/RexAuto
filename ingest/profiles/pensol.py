@@ -241,8 +241,7 @@ class PensolProfile:
         data = {
             "part_no": nz.clean_text(name), "part_no_norm": nz.norm_part(name),
             "description": nz.clean_text(name + " " + " ".join(specs)), "category": cat, "segment": seg, "oem_name": None,
-            "oem_raw": None, "application": None, "variant_label": pack, "mrp": mrp, "mrp_prev": None,
-            "price_basis": "incl_tax", "gst_pct": None, "hsn": None, "moq": None, "pack_qty": None, "unit": "pack",
+            "oem_raw": None, "application": None, "variant_label": pack, "mrp": mrp, "mrp_prev": None, "gst_pct": None, "hsn": None, "moq": None, "pack_qty": None, "unit": "pack",
             "image_url": None, "needs_review": low, "review_note": "read by OCR with low confidence" if low else None,
             "source_page": pno, "source_row": n,
         }

@@ -76,9 +76,13 @@ def verify(conn):
     check("archived originals with a discount/dealer column are redacted", cur.fetchone()["n"] == 0)
     cur.execute("select count(*) n from products where price_effective_from is null and mrp is not null")
     check("every priced product has its price-list date", cur.fetchone()["n"] == 0, "")
-    cur.execute("select count(*) n from products where price_basis = 'unknown'")
-    n = cur.fetchone()["n"]
-    check("price basis (incl./excl. GST) known for every product", n == 0, f"{n} products unknown; set data/config/price_basis.csv")
+    cur.execute("""select br.slug, b.original_filename, b.price_includes_gst from import_batches b join brands br on br.id=b.brand_id
+                   where b.status='applied' and b.profile <> 'meko_catalogue' order by 1""")
+    unknown = [r["slug"] for r in cur.fetchall() if r["price_includes_gst"] is None]
+    check("GST basis recorded on every price list (unknown is allowed; flip later with set-gst)", True,
+          f"unknown for: {', '.join(unknown) or 'none'}")
+    cur.execute("select count(*) n from products where mrp is not null and mrp_batch_id is null")
+    check("every priced product knows which price list its MRP came from", cur.fetchone()["n"] == 0)
     snap = snapshot(conn)
     check("catalogue fingerprint computed", True, f"{snap['sha256'][:12]} {snap['counts']}")
     return out

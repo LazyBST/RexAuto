@@ -29,6 +29,9 @@ def main(argv=None):
     s = sub.add_parser("load-all", help="upload, parse and apply every source in data/config/sources.csv")
     s.add_argument("--dir", required=True); s.add_argument("--only", help="comma-separated brand slugs or profiles")
     sub.add_parser("verify", help="post-load checks")
+    s = sub.add_parser("set-gst", help="say whether a price list's MRPs include GST (no resync needed)")
+    s.add_argument("--includes", required=True, choices=["yes", "no", "unknown"])
+    g = s.add_mutually_exclusive_group(required=True); g.add_argument("--batch"); g.add_argument("--brand")
     s = sub.add_parser("serve", help="local search UI + API"); s.add_argument("--port", type=int, default=3000)
     a = p.parse_args(argv)
     actor = _actor(a)
@@ -76,6 +79,9 @@ def main(argv=None):
         elif a.cmd == "load-all":
             from . import loadall
             loadall.load_all(conn, a.dir, actor, set(a.only.split(",")) if a.only else None)
+        elif a.cmd == "set-gst":
+            val = {"yes": True, "no": False, "unknown": None}[a.includes]
+            print(parse.set_price_includes_gst(conn, actor, val, batch_id=a.batch, brand_slug=a.brand), "batch(es) updated")
         elif a.cmd == "verify":
             from . import loadall
             res = loadall.verify(conn)
