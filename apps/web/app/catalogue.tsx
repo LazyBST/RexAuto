@@ -38,6 +38,12 @@ export default function Catalogue() {
     on(); m.addEventListener("change", on);
     return () => m.removeEventListener("change", on);
   }, []);
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [open]);
   const hasQuery = !!q.trim() || Object.values(f).some(Boolean);
 
   const run = useCallback(async (query: string, filters: F, offset = 0, append = false) => {

@@ -167,3 +167,8 @@ h2.k-make,h2.k-brand,h2.k-cat,h2.k-seg{color:var(--k)}
 .search input::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
 .kv{grid-template-columns:150px minmax(0,1fr)}.kv dd{overflow-wrap:anywhere}
 @media (max-width:820px){.kv{grid-template-columns:110px minmax(0,1fr)}}
+
+/* dialog scrolling: use the visible viewport (dvh), keep scroll inside the sheet, clear the home indicator */
+.backdrop{height:100vh;height:100dvh;overscroll-behavior:contain}
+.dlg{max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding-bottom:calc(28px + env(safe-area-inset-bottom))}
+@media (max-width:820px){.dlg{max-height:90vh;max-height:90dvh}}
