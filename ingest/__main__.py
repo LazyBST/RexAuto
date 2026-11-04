@@ -40,7 +40,8 @@ def main(argv=None):
             db.migrate(conn); db.seed_config(conn)
             db.ensure_brand(conn, "Uno Minda", "uno-minda", owned=True)
             db.ensure_brand(conn, "Fras-le", "fras-le", owned=True)
-            db.ensure_brand(conn, "Neolite", "neolite", owned=True); conn.commit()
+            db.ensure_brand(conn, "Neolite", "neolite", owned=True)
+            db.ensure_brand(conn, "Car International", "car-international", owned=True); conn.commit()
             print("ok")
         elif a.cmd == "upload":
             r = parse.upload_batch(conn, a.brand, a.profile, a.file, actor)

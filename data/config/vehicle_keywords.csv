@@ -1,0 +1,134 @@
+keyword,make,segment
+SUZUKI,Maruti Suzuki,CAR
+MARUTI,Maruti Suzuki,CAR
+ALTO,Maruti Suzuki,CAR
+SWIFT,Maruti Suzuki,CAR
+WAGON-R,Maruti Suzuki,CAR
+WAGONR,Maruti Suzuki,CAR
+DZIRE,Maruti Suzuki,CAR
+BALENO,Maruti Suzuki,CAR
+ERTIGA,Maruti Suzuki,CAR
+BREZZA,Maruti Suzuki,CAR
+EECO,Maruti Suzuki,CAR
+OMNI,Maruti Suzuki,CAR
+ESTEEM,Maruti Suzuki,CAR
+GYPSY,Maruti Suzuki,CAR
+CELERIO,Maruti Suzuki,CAR
+ZEN,Maruti Suzuki,CAR
+A-STAR,Maruti Suzuki,CAR
+HYUNDAI,Hyundai,CAR
+SANTRO,Hyundai,CAR
+I-10,Hyundai,CAR
+I-20,Hyundai,CAR
+VERNA,Hyundai,CAR
+CRETA,Hyundai,CAR
+ACCENT,Hyundai,CAR
+XCENT,Hyundai,CAR
+EON,Hyundai,CAR
+GETZ,Hyundai,CAR
+ELANTRA,Hyundai,CAR
+HYWA,Hyundai,CAR
+TATA,Tata,
+INDICA,Tata,CAR
+SUMO,Tata,
+SIGNA,Tata,HCV
+ACE,Tata,LCV
+MAGIC,Tata,LCV
+SAFARI,Tata,CAR
+NANO,Tata,CAR
+VISTA,Tata,CAR
+ALTROZ,Tata,CAR
+NEXON,Tata,CAR
+HARRIER,Tata,CAR
+TIAGO,Tata,CAR
+TIGOR,Tata,CAR
+INDIGO,Tata,CAR
+WINGER,Tata,LCV
+XENON,Tata,LCV
+INTRA,Tata,LCV
+MAHINDRA,Mahindra,
+BOLERO,Mahindra,
+SCORPIO,Mahindra,CAR
+XUV,Mahindra,CAR
+THAR,Mahindra,CAR
+MARAZZO,Mahindra,CAR
+XYLO,Mahindra,CAR
+MAXIMO,Mahindra,LCV
+MARSHAL,Mahindra,CAR
+ARMADA,Mahindra,CAR
+VEERO,Mahindra,LCV
+JEETO,Mahindra,LCV
+SUPRO,Mahindra,LCV
+TUV,Mahindra,CAR
+QUANTO,Mahindra,CAR
+KUV,Mahindra,CAR
+INNOVA,Toyota,CAR
+QUALIS,Toyota,CAR
+FORTUNER,Toyota,CAR
+ETIOS,Toyota,CAR
+CRYSTA,Toyota,CAR
+COROLLA,Toyota,CAR
+TOYOTA,Toyota,CAR
+HONDA,Honda,CAR
+CITY,Honda,CAR
+AMAZE,Honda,CAR
+JAZZ,Honda,CAR
+BRIO,Honda,CAR
+CIVIC,Honda,CAR
+LEYLAND,Ashok Leyland,HCV
+ASHOK,Ashok Leyland,HCV
+DOST,Ashok Leyland,LCV
+PARTNER,Ashok Leyland,LCV
+STILE,Ashok Leyland,CAR
+BOSS,Ashok Leyland,HCV
+GURU,Ashok Leyland,HCV
+EICHER,Eicher,HCV
+BHARAT BENZ,BharatBenz,HCV
+BHARATBENZ,BharatBenz,HCV
+TRAX,Force,LCV
+GURKHA,Force,CAR
+FORCE,Force,
+FIAT,Fiat,CAR
+PUNTO,Fiat,CAR
+LINEA,Fiat,CAR
+FORD,Ford,CAR
+ENDEAVOUR,Ford,CAR
+FIGO,Ford,CAR
+ECOSPORT,Ford,CAR
+IKON,Ford,CAR
+FIESTA,Ford,CAR
+CHEVROLET,Chevrolet,CAR
+BEAT,Chevrolet,CAR
+SPARK,Chevrolet,CAR
+TAVERA,Chevrolet,CAR
+CRUZE,Chevrolet,CAR
+ENJOY,Chevrolet,CAR
+OPTRA,Chevrolet,CAR
+DATSUN,Datsun,CAR
+MICRA,Nissan,CAR
+NISSAN,Nissan,CAR
+SUNNY,Nissan,CAR
+KWID,Renault,CAR
+DUSTER,Renault,CAR
+RENAULT,Renault,CAR
+SKODA,Skoda,CAR
+OCTAVIA,Skoda,CAR
+LAURA,Skoda,CAR
+POLO,Volkswagen,CAR
+VENTO,Volkswagen,CAR
+AMBASSADOR,Hindustan Motors,CAR
+BAJAJ,Bajaj,OTHER
+PIAGGIO,Piaggio,OTHER
+APE,Piaggio,OTHER
+ISUZU,Isuzu,LCV
+CANTER,Mitsubishi Fuso,HCV
+MAZDA,Mazda,LCV
+IVECO,Iveco,HCV
+NAVISTAR,Navistar,HCV
+JCB,JCB,OTHER
+VOLVO,Volvo,HCV
+SWARAJ,Swaraj,LCV
+TRUCK,,HCV
+TIPPER,,HCV
+MRUTI,Maruti Suzuki,CAR
+M&M,Mahindra,

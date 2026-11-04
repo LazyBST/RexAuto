@@ -43,7 +43,8 @@ def _where(cur, q, f, exclude=None):
                 alts.append("p.oem_name ilike %s"); a.append(_like(make))
             for ab, words in abbr:
                 if t in words:  # "lamp" -> also rows that only say TL / HL / FL
-                    alts.append("(" + HAY + r") ~* %s"); a.append(r"\m" + re.escape(ab) + r"\M")
+                    alts.append("(" + HAY + r") ~* %s")  # W.R. / WR / W R written with or without dots
+                    a.append(r"(?<![A-Za-z0-9])" + r"\.?".join(re.escape(ch) for ch in ab) + r"\.?(?![A-Za-z0-9])")
                 elif t.replace(".", "").upper() == ab:  # "hl" -> also rows that spell it out
                     alts.append("(" + HAY + ") ilike %s"); a.append(_like(" ".join(words)))
             tok_sql.append("(" + " or ".join(alts) + ")")
