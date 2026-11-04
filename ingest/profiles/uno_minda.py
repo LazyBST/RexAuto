@@ -147,14 +147,24 @@ class UnoMindaProfile:
     def _cell_text(chars, bbox, used=None):
         """Text of the characters whose centre lies in bbox; a visible gap between characters becomes a space."""
         x0, top, x1, bottom = bbox
-        hit = sorted((c for c in chars
-                      if x0 <= (c["x0"] + c["x1"]) / 2 < x1 and top <= (c["top"] + c["bottom"]) / 2 <= bottom),
-                     key=lambda c: c["x0"])
+        hit = [c for c in chars
+               if x0 <= (c["x0"] + c["x1"]) / 2 < x1 and top <= (c["top"] + c["bottom"]) / 2 <= bottom]
+        # a cell can hold several printed lines: read line by line (top to bottom), each left to right
+        hit.sort(key=lambda c: c["top"])
+        lines, cur = [], []
+        for c in hit:
+            if cur and c["top"] - cur[0]["top"] > 2.5:
+                lines.append(cur)
+                cur = []
+            cur.append(c)
+        if cur:
+            lines.append(cur)
+        hit = [c for ln in lines for c in sorted(ln, key=lambda c: c["x0"])]
         if used is not None:
             used.update(id(c) for c in hit)
         out, prev = [], None
         for c in hit:
-            if prev is not None and c["x0"] - prev["x1"] > GAP_AS_SPACE and not c["text"].isspace():
+            if prev is not None and (c["top"] - prev["top"] > 2.5 or c["x0"] - prev["x1"] > GAP_AS_SPACE) and not c["text"].isspace():
                 out.append(" ")
             out.append(c["text"])
             prev = c
