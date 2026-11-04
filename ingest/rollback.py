@@ -2,7 +2,7 @@
 import psycopg2.extras as ex
 
 from . import audit
-from .apply import apply_batch, lock, reindex  # noqa: F401
+from .apply import apply_batch, fetch_state, lock, reindex, restore_refs  # noqa: F401
 from .db import cursor
 from .storage import get_storage
 
@@ -25,9 +25,7 @@ def delete_preview(conn, batch_id):
     res = {"filename": b["original_filename"], "status": b["status"], "delete": 0, "restore": 0, "reinsert": 0,
            "already_gone": 0, "conflicts": []}
     for pid, ch in _chains(cur, batch_id).items():
-        cur.execute("select to_jsonb(p.*) as j from products p where id=%s", (pid,))
-        row = cur.fetchone()
-        current = row["j"] if row else None
+        current = fetch_state(cur, pid)
         expected = ch["last"]["after"]
         first = ch["first"]
         if current != expected:
@@ -78,9 +76,7 @@ def delete_batch(conn, batch_id, actor, confirm, force_conflicts=False, purge_fi
     set_sql = ", ".join(f"{c} = r.{c}" for c in cols)
     try:
         for pid, ch in _chains(cur, batch_id).items():
-            cur.execute("select to_jsonb(p.*) as j from products p where id=%s", (pid,))
-            row = cur.fetchone()
-            current = row["j"] if row else None
+            current = fetch_state(cur, pid)
             first, last = ch["first"], ch["last"]
             if current != last["after"]:
                 if current is None and first["action"] == "insert":
@@ -96,11 +92,13 @@ def delete_batch(conn, batch_id, actor, confirm, force_conflicts=False, purge_fi
                     n_del += 1
             elif current is None:
                 cur.execute("insert into products select * from jsonb_populate_record(null::products, %s)", (ex.Json(target),))
+                restore_refs(cur, pid, target.get("cross_refs") or [])
                 log_change(pid, "insert", None, target)
                 n_rei += 1
             else:
                 cur.execute(f"update products set {set_sql} from jsonb_populate_record(null::products, %s) r "
                             f"where products.id = %s", (ex.Json(target), pid))
+                restore_refs(cur, pid, target.get("cross_refs") or [])
                 log_change(pid, "update", current, target)
                 n_res += 1
             touched.append(pid)

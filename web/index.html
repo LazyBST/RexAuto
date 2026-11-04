@@ -219,6 +219,7 @@ async function openProduct(id) {
       ${row("Used for", p.application)}${row("Vehicle make", p.oem_name)}${row("OEM code (as printed)", p.oem_raw)}
       ${row("Segment", p.segment)}${row("HSN", p.hsn)}${row("GST", p.gst_pct != null ? p.gst_pct + "%" : null)}
       ${row("Min. order qty", p.moq)}${row("Pack", p.pack_qty ? p.pack_qty + " " + (p.unit||"") : null)}
+      ${(p.cross_refs||[]).length ? `<dt>OEM / reference nos.</dt><dd>${p.cross_refs.map(r => esc(r.ref_part_no)).join(" · ")}</dd>` : ""}
       ${row("Availability", "Ask us — most items are in stock or available within ~7 days")}
     </dl>
     <p><a class="btn primary" style="text-decoration:none;display:inline-block" href="${wa(`Hi, is this available?\n${p.brand} ${p.part_no}${p.variant_label?" ("+p.variant_label+")":""}\n${location.origin}/#p=${p.id}`)}" target="_blank" rel="noopener">Ask availability on WhatsApp</a></p>

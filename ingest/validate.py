@@ -2,16 +2,19 @@
 import statistics
 from collections import defaultdict
 
-from .profiles.base import HARD_FLAGS, PRODUCT_FIELDS  # noqa: F401
+from .profiles.base import EXTRA_FIELDS, HARD_FLAGS, PRODUCT_FIELDS, REF_FIELDS  # noqa: F401
 
 OUTLIER_FACTOR = 10
 MIN_CATEGORY_SIZE = 10
 
 
 def assert_whitelisted(row):
-    extra = set(row.data) - PRODUCT_FIELDS
+    extra = set(row.data) - PRODUCT_FIELDS - EXTRA_FIELDS
     if extra:
         raise ValueError(f"profile emitted non-whitelisted fields {sorted(extra)}; refusing to stage")
+    for ref in row.data.get("cross_refs") or []:
+        if set(ref) - REF_FIELDS:
+            raise ValueError(f"profile emitted non-whitelisted cross-ref fields {sorted(set(ref) - REF_FIELDS)}")
 
 
 def validate(rows, pages):

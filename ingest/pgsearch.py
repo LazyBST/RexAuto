@@ -6,7 +6,8 @@ import time
 from . import normalize as nz
 from .db import cursor
 
-HAY = "concat_ws(' ', p.part_no, p.description, p.application, p.oem_name, p.oem_raw, p.category, b.name, p.variant_label)"
+REFS = "(select string_agg(c.ref_part_no, ' ') from cross_refs c where c.product_id = p.id)"
+HAY = f"concat_ws(' ', p.part_no, p.description, p.application, p.oem_name, p.oem_raw, p.category, b.name, p.variant_label, {REFS})"
 FROM = "from products p join brands b on b.id = p.brand_id"
 _cache = {}
 
@@ -35,6 +36,8 @@ def _where(cur, q, f, exclude=None):
         if len(qn) >= 3 and any(ch.isdigit() for ch in qn):
             parts.append("p.part_no_norm like %s")
             args.append(_like(qn)[1:] if len(qn) < 5 else _like(qn))  # short codes: prefix only
+            parts.append("exists (select 1 from cross_refs c where c.product_id = p.id and c.ref_part_no_norm like %s)")
+            args.append(_like(qn)[1:])  # OEM / competitor numbers: prefix match
         tok_sql = []
         for t in tokens:
             alts, a = ["(" + HAY + ") ilike %s"], [_like(t)]
@@ -116,6 +119,9 @@ def product(conn, pid):
     for k in ("mrp", "mrp_prev", "gst_pct"):
         p[k] = float(p[k]) if p[k] is not None else None
     p["created_at"] = p["updated_at"] = None
+    cur.execute("select ref_type, ref_brand, ref_part_no, note from cross_refs where product_id = %s order by ref_type, ref_part_no",
+                (p["id"],))
+    p["cross_refs"] = cur.fetchall()
     cur.execute(f"select {CARD} {FROM} where p.brand_id = %s and p.part_no_norm = %s and p.id <> %s and p.status='published' "
                 "order by p.variant_label", (p["brand_id"], p["part_no_norm"], p["id"]))
     p["variants"] = _clean(cur.fetchall())

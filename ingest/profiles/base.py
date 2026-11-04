@@ -7,6 +7,12 @@ PRODUCT_FIELDS = frozenset({
     "pack_qty", "unit", "image_url", "needs_review", "review_note", "source_page", "source_row",
 })
 
+# Optional staged key holding the product's cross references (OEM / competitor numbers):
+#   [{"ref_type": "oem", "ref_brand": None, "ref_part_no": "2525 2010 0103", "note": None}, ...]
+# Only managed when a profile emits it; profiles that never emit it leave existing cross refs untouched.
+EXTRA_FIELDS = frozenset({"cross_refs"})
+REF_FIELDS = frozenset({"ref_type", "ref_brand", "ref_part_no", "note"})
+
 # hard flags: row is held in staging and never applied
 HARD_FLAGS = frozenset({"missing_part_no", "bad_mrp", "duplicate_in_batch"})
 

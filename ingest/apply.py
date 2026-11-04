@@ -5,7 +5,8 @@ import psycopg2.extras as ex
 
 from . import audit
 from .db import cursor
-from .profiles.base import HARD_FLAGS, PRODUCT_FIELDS
+from . import normalize as nz
+from .profiles.base import EXTRA_FIELDS, HARD_FLAGS, PRODUCT_FIELDS
 
 LOCK_KEY = 7001  # serialises every writer of `products` (apply, resync, delete)
 DEFAULTS = {"price_basis": "unknown", "variant_label": "", "needs_review": False}
@@ -24,6 +25,49 @@ def _same(a, b):
     return a == b
 
 
+STATE_SQL = ("to_jsonb(p.*) || jsonb_build_object('cross_refs', coalesce((select jsonb_agg(to_jsonb(c.*) - 'product_id' "
+             "order by c.ref_type, c.ref_part_no_norm, c.ref_brand, c.id) from cross_refs c where c.product_id = p.id), '[]'::jsonb))")
+
+
+def fetch_state(cur, pid):
+    """The product row plus its cross refs, as one jsonb document (what change_log stores)."""
+    cur.execute(f"select {STATE_SQL} as j from products p where p.id = %s", (pid,))
+    r = cur.fetchone()
+    return r["j"] if r else None
+
+
+def _ref_key(r):
+    return (r["ref_type"], (r.get("ref_brand") or ""), nz.norm_part(r["ref_part_no"]))
+
+
+def normalise_refs(refs):
+    out, seen = [], set()
+    for r in refs or []:
+        if not nz.norm_part(r.get("ref_part_no")):
+            continue
+        r = {"ref_type": r["ref_type"], "ref_brand": r.get("ref_brand"), "ref_part_no": r["ref_part_no"].strip(), "note": r.get("note")}
+        if _ref_key(r) not in seen:
+            seen.add(_ref_key(r))
+            out.append(r)
+    return out
+
+
+def write_refs(cur, pid, refs):
+    cur.execute("delete from cross_refs where product_id = %s", (pid,))
+    for r in refs:
+        cur.execute("insert into cross_refs(product_id, ref_type, ref_brand, ref_part_no, ref_part_no_norm, note) "
+                    "values (%s,%s,%s,%s,%s,%s)", (pid, r["ref_type"], r.get("ref_brand"), r["ref_part_no"],
+                                                    nz.norm_part(r["ref_part_no"]), r.get("note")))
+
+
+def restore_refs(cur, pid, refs):
+    """Put back the exact rows (same ids) a change_log entry recorded."""
+    cur.execute("delete from cross_refs where product_id = %s", (pid,))
+    if refs:
+        cur.execute("insert into cross_refs select * from jsonb_populate_recordset(null::cross_refs, %s)",
+                    (ex.Json([{**r, "product_id": str(pid)} for r in refs]),))
+
+
 def lock(cur):
     cur.execute("select pg_advisory_xact_lock(%s)", (LOCK_KEY,))
 
@@ -31,7 +75,7 @@ def lock(cur):
 def compute_plan(cur, batch_id, remove_missing=False):
     cur.execute("select brand_id from import_batches where id=%s", (batch_id,))
     brand_id = cur.fetchone()["brand_id"]
-    cur.execute("select to_jsonb(p.*) as j from products p where brand_id=%s", (brand_id,))
+    cur.execute(f"select {STATE_SQL} as j from products p where brand_id=%s", (brand_id,))
     existing = {(r["j"]["part_no_norm"], r["j"]["variant_label"]): r["j"] for r in cur.fetchall()}
     cur.execute("select id, page, row_no, data, flags from batch_rows where batch_id=%s order by id", (batch_id,))
     plan = {"inserts": [], "updates": [], "unchanged": 0, "removals": [], "held": [], "flagged": 0}
@@ -43,10 +87,12 @@ def compute_plan(cur, batch_id, remove_missing=False):
             plan["held"].append({"page": r["page"], "row_no": r["row_no"], "flags": r["flags"],
                                  "part_no": r["data"].get("part_no")})
             continue
-        extra = set(r["data"]) - PRODUCT_FIELDS
+        extra = set(r["data"]) - PRODUCT_FIELDS - EXTRA_FIELDS
         if extra:
             raise ValueError(f"staging row {r['id']} holds non-whitelisted fields {sorted(extra)}")
         d = {**{k: None for k in PRODUCT_FIELDS}, **DEFAULTS, **r["data"]}
+        if "cross_refs" in d:
+            d["cross_refs"] = normalise_refs(d["cross_refs"])
         key = (d["part_no_norm"], d["variant_label"])
         in_file.add(key)
         cur_row = existing.get(key)
@@ -54,6 +100,8 @@ def compute_plan(cur, batch_id, remove_missing=False):
             plan["inserts"].append({"row": d, "flags": r["flags"]})
             continue
         changes = {f: [cur_row[f], d[f]] for f in COMPARE_FIELDS if not _same(cur_row[f], d[f])}
+        if "cross_refs" in d and {_ref_key(r) for r in cur_row["cross_refs"]} != {_ref_key(r) for r in d["cross_refs"]}:
+            changes["cross_refs"] = [[r["ref_part_no"] for r in cur_row["cross_refs"]], [r["ref_part_no"] for r in d["cross_refs"]]]
         if not changes:
             plan["unchanged"] += 1
             continue
@@ -87,7 +135,7 @@ def preview(conn, batch_id, remove_missing=False):
 
 
 def _cols(d):
-    return [c for c in sorted(PRODUCT_FIELDS) if c in d]
+    return [c for c in sorted(PRODUCT_FIELDS) if c in d]  # cross_refs is not a column; it is written separately
 
 
 def apply_batch(conn, batch_id, actor, run_type=None, remove_missing=False):
@@ -120,6 +168,9 @@ def apply_batch(conn, batch_id, actor, run_type=None, remove_missing=False):
                 f"values (%s,%s,%s,{', '.join(['%s'] * len(cols))}) returning to_jsonb(products.*) as j",
                 [b["brand_id"], batch_id, batch_id] + [d[c] for c in cols])
             j = cur.fetchone()["j"]
+            if "cross_refs" in d:
+                write_refs(cur, j["id"], d["cross_refs"])
+            j = fetch_state(cur, j["id"])
             log_change(j["id"], "insert", None, j)
             touched.append(j["id"])
         for item in plan["updates"]:
@@ -129,7 +180,9 @@ def apply_batch(conn, batch_id, actor, run_type=None, remove_missing=False):
                 f"update products set {', '.join(c + ' = %s' for c in cols)}, last_batch_id = %s, updated_at = now() "
                 f"where id = %s returning to_jsonb(products.*) as j",
                 [d[c] for c in cols] + [batch_id, item["product_id"]])
-            j = cur.fetchone()["j"]
+            if "cross_refs" in d and "cross_refs" in item["changes"]:
+                write_refs(cur, item["product_id"], d["cross_refs"])
+            j = fetch_state(cur, item["product_id"])
             log_change(item["product_id"], "update", item["before"], j)
             touched.append(item["product_id"])
         for item in plan["removals"]:
