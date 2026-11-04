@@ -6,9 +6,8 @@ import time
 from . import normalize as nz
 from .db import cursor
 
-REFS = "(select string_agg(c.ref_part_no, ' ') from cross_refs c where c.product_id = p.id)"
-HAY = f"concat_ws(' ', p.part_no, p.description, p.application, p.oem_name, p.oem_raw, p.category, b.name, p.variant_label, {REFS})"
-FROM = "from products p join brands b on b.id = p.brand_id"
+HAY = "coalesce(ps.text, '')"   # product_search: own columns + brand + cross references, refreshed by the batch engine
+FROM = "from products p join brands b on b.id = p.brand_id left join product_search ps on ps.product_id = p.id"
 _cache = {}
 
 

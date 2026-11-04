@@ -40,6 +40,16 @@ def api_product(pid: str):
     return p
 
 
+@app.get("/img/{path:path}")
+def image(path: str):
+    from .storage import LocalStorage
+    base = (LocalStorage().base / "images").resolve()
+    f = (base / path).resolve()
+    if base not in f.parents or not f.is_file():
+        raise HTTPException(404, "not found")
+    return FileResponse(f, headers={"Cache-Control": "public, max-age=86400"})
+
+
 @app.get("/")
 def index():
     return FileResponse(WEB / "index.html")

@@ -1,31 +1,77 @@
-"""Pensol Industries "AUTOMOTIVE DEALERS PRICE LIST" (effective 01-04-2026): lubricants, per pack.
+"""Pensol Industries "AUTOMOTIVE DEALERS PRICE LIST" (effective 01-04-2026): lubricants, one row per pack.
 
-The sheet is a scan: only page 2 carries a text layer (page 1 is a picture and is reported as needing OCR).
-Two panels per page, each: PRODUCT | PACKING | RATE | MRP PER PC.  The RATE column is the dealer rate:
-it is excluded by position BEFORE any text is read and never stored. Only MRP per pack is kept.
-Product names and their specification lines do not sit on the same row as their pack lines, so each pack is
-attached to the nearest product name above it; every row is therefore marked for review.
+The sheet is a scan, so it is read with local OCR (ingest/ocr.py, Apple Vision) and then by position.
+Two panels per page, each: PRODUCT | PACKING | RATE | MRP PER PC.  RATE is the dealer rate: the words in that
+column are discarded straight after OCR, before any row is built, and are never stored. Only MRP per piece is kept.
+Names are matched to their pack lines by position; prices are cross-checked per litre inside each product so a
+misread digit shows up as a flag. Every row carries an `ocr` flag; low-confidence ones are marked for review.
 """
 import re
+import statistics
 
-import pdfplumber
+import fitz
 
 from .. import normalize as nz
+from ..ocr import ocr_page
 from .base import PageStat, ParsedRow, ParseResult
 
 NAME = "pensol"
 BRAND_SLUG = "pensol"
-PARSER_VERSION = "pensol/1.0"
+PARSER_VERSION = "pensol/2.0-ocr"
 
-MIN_WORDS_FOR_TEXT_LAYER = 30
-# panel x-ranges in points: (product, packing, rate (never read), mrp)
-PANELS = [((40, 195), (195, 249), (249, 288), (288, 317)), ((317, 426), (426, 478), (478, 511), (511, 565))]
-MAX_UNRELIABLE = 0.05  # tolerated share of pack lines without a readable product / MRP
-NAME_LIFT = 9  # a product name sits up to this many points below its first pack line
-PACK_RE = re.compile(r"(LTR|LIR|KG|ML|GM|PCH|JAR|BKT|DRM|DRUM|DRN)", re.I)
-SECTION_CATEGORY = {"PASSENGER CAR MOTOR OILS": ("Engine Oils - Passenger Car", "CAR"), "CNG ENGINE OILS": ("Engine Oils - CNG", "CAR"),
-                    "TWO WHEELER OILS": ("Engine Oils - Two Wheeler", "OTHER"), "GEAR / TRANSMISSION OILS": ("Gear & Transmission Oils", "OTHER"),
-                    "COOLANTS": ("Coolants", "OTHER")}
+PACK_RE = re.compile(r"(LTR|LIR|KG|ML|GM|PCH|JAR|BKT|DRM|DRUM|DRN|TUB)", re.I)
+NAME_LIFT = 24          # a product name sits up to this many pixels below its first pack line (250 dpi, scans drift)
+ROW_TOL = 16
+ALIGN_TOL = 14
+LOW_CONF = 0.6
+SECTIONS = {
+    "HEAVY DUTY DIESEL ENGINE OILS": ("Engine Oils - Heavy Duty Diesel", "HCV"),
+    "PASSENGER CAR MOTOR OILS": ("Engine Oils - Passenger Car", "CAR"),
+    "CNG ENGINE OILS": ("Engine Oils - CNG", "CAR"),
+    "TWO WHEELER OILS": ("Engine Oils - Two Wheeler", "OTHER"),
+    "TRACTOR AND PUMPSET OILS": ("Engine Oils - Tractor & Pumpset", "TRACTOR"),
+    "GEAR / TRANSMISSION OILS": ("Gear & Transmission Oils", "OTHER"),
+    "APLR SERIES GREASES": ("Greases", "OTHER"), "OTHER GREASES": ("Greases", "OTHER"),
+    "HYDRAULIC OILS": ("Hydraulic Oils", "OTHER"), "BRAKE FLUIDS": ("Brake Fluids", "OTHER"), "COOLANTS": ("Coolants", "OTHER"),
+}
+
+
+def _lines(words, tol=ROW_TOL):
+    out, cur = [], []
+    for w in sorted(words, key=lambda w: w["cy"]):
+        if cur and w["cy"] - cur[-1]["cy"] > tol:
+            out.append(cur)
+            cur = []
+        cur.append(w)
+    if cur:
+        out.append(cur)
+    return out
+
+
+def clean_pack(txt):
+    """Fix the usual OCR slips in a pack description without changing its meaning."""
+    t = nz.clean_text(txt).strip("|/ ")
+    t = re.sub(r"^[AÀ]\s*X", "4X", t)                       # '4' read as 'A'
+    t = re.sub(r"(?<=\d)\s*[BS](?=\d)", "8", t)             # '8' read as B/S inside a number
+    t = re.sub(r"\bB(?=0{2}\b)", "8", t)                    # 'B00 ML' -> '800 ML'
+    t = re.sub(r"^B(?=\s?\d\s*(LTR|KG))", "8", t)          # 'B 5 LTR' -> '8 5 LTR'
+    t = re.sub(r"(\d)\s(\d)(?=\s*(LTR|LIR|KG)\b)", r"\1.\2", t)   # '7 5 LTR' -> '7.5 LTR'
+    t = re.sub(r"(X\s*\d)\s(\d)(?=\s*(LTR|LIR|KG)\b)", r"\1.\2", t)
+    t = re.sub(r"\bLIR\b", "LTR", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
+def clean_name(txt):
+    t = nz.clean_text(txt).lstrip("|/ ")
+    t = re.sub(r"\b[B8]OW\b", "80W", t)       # '80W' read as 'BOW'
+    t = re.sub(r"\bSW\b(?=\s*\d)", "5W", t)  # '5W 40' read as 'SW 40'
+    t = re.sub(r"\b(80W|85W|75W)\s30\b", r"\1 90", t)   # gear grade '90' read as '30'
+    return t
+
+
+def _text(ws):
+    return nz.clean_text(" ".join(w["t"] for w in sorted(ws, key=lambda w: w["x"])))
 
 
 class PensolProfile:
@@ -34,123 +80,144 @@ class PensolProfile:
     parser_version = PARSER_VERSION
 
     def parse(self, pdf_path):
-        rows, pages = [], []
-        with pdfplumber.open(pdf_path) as pdf:
-            for pno, page in enumerate(pdf.pages, start=1):
-                stat = PageStat(page=pno, words=len(page.extract_words()))
-                pages.append(stat)
-                if stat.words < MIN_WORDS_FOR_TEXT_LAYER:
-                    stat.needs_ocr, stat.note = True, "no usable text layer (scanned image)"
-                    continue
-                self._page(page, pno, stat, rows)
+        n_pages = len(fitz.open(pdf_path))
+        rows, pages, carry = [], [], {}
+        for pno in range(1, n_pages + 1):
+            stat = PageStat(page=pno)
+            pages.append(stat)
+            words, _ = ocr_page(pdf_path, pno - 1)
+            stat.words = len(words)
+            if len(words) < 30:
+                stat.needs_ocr, stat.note = True, "nothing recognised even with OCR"
+                continue
+            self._page(words, pno, stat, rows, carry)
+        self._price_check(rows)
         return ParseResult(rows=rows, pages=pages)
 
-    @staticmethod
-    def _clean_page(page):
-        """Characters of the page minus everything inside a RATE column."""
-        gone = [p[2] for p in PANELS]
-        return [c for c in page.chars if c["text"].strip()
-                and not any(lo <= (c["x0"] + c["x1"]) / 2 < hi for lo, hi in gone)]
-
-    def _page(self, page, pno, stat, rows):
-        text = page.extract_text() or ""
-        if "PACKING" not in text.upper() or "MRP" not in text.upper():
-            stat.unrecognised, stat.note = True, "price table headers not found"
+    def _page(self, words, pno, stat, rows, carry):
+        heads = sorted((w for w in words if w["t"] == "PACKING"), key=lambda w: w["x"])
+        if len(heads) != 2:
+            stat.unrecognised, stat.note = True, f"expected 2 PACKING headers, found {len(heads)}"
             return
-        chars = self._clean_page(page)
-        terms = [c["top"] for c in chars if False]
-        words = page.extract_words()
-        stop = min([w["top"] for w in words if w["text"].upper().startswith("TERMS")] or [page.height])
-        top = max([w["bottom"] for w in words if w["text"].upper() == "PC." and w["top"] < 140] or [120])
-        page_rows = []
-        for cols in PANELS:
-            self._panel(chars, cols, top, stop, pno, stat, page_rows)
-        bad = sum(1 for r in page_rows if "no_product_name" in r.flags or "bad_mrp" in r.flags)
-        if not page_rows or bad / len(page_rows) > MAX_UNRELIABLE:
-            # The scan's text layer cannot tell which product a pack line belongs to; publishing guesses would put
-            # prices on the wrong products. Report the page for OCR instead.
-            stat.needs_ocr, stat.rows = True, 0
-            stat.note = (f"text layer unreliable: {bad} of {len(page_rows)} pack lines could not be matched to a product; "
-                         "page needs OCR, nothing was imported")
-            return
-        rows.extend(page_rows)
-        stat.rows = len(page_rows)
+        px0 = [h["x"] for h in heads]
+        # RATE (dealer rate) words are dropped here, before anything else looks at the page
+        rate = [(p + 150, p + 280) for p in px0]
+        words = [w for w in words if not any(lo <= w["cx"] < hi for lo, hi in rate)]
+        top = max(h["cy"] for h in heads) + 45
+        terms = [w["cy"] for w in words if w["t"].upper().startswith("TERMS")]
+        stop = min(terms) if terms else 10 ** 6
+        words = [w for w in words if top <= w["cy"] < stop]
+        for i, p in enumerate(px0):
+            prod_lo = 0 if i == 0 else px0[0] + 392
+            self._panel(words, i, prod_lo, p - 60, (p - 60, p + 150), (p + 280, p + 392), pno, stat, rows, carry)
 
-    @staticmethod
-    def _lines(chars, lo, hi, top, stop):
-        sel = sorted((c for c in chars if lo <= (c["x0"] + c["x1"]) / 2 < hi and top <= c["top"] < stop), key=lambda c: c["top"])
-        lines, cur = [], []
-        for c in sel:
-            if cur and c["top"] - cur[-1]["top"] > 3.5:
-                lines.append(cur)
-                cur = []
-            cur.append(c)
-        if cur:
-            lines.append(cur)
-        return lines
-
-    @staticmethod
-    def _txt(cs, lo, hi):
-        hit = sorted((c for c in cs if lo <= (c["x0"] + c["x1"]) / 2 < hi), key=lambda c: c["x0"])
-        out, prev = [], None
-        for c in hit:
-            if prev is not None and c["x0"] - prev["x1"] > 1.5:
-                out.append(" ")
-            out.append(c["text"])
-            prev = c
-        return nz.clean_text("".join(out))
-
-    def _panel(self, chars, cols, top, stop, pno, stat, rows):
-        (plo, phi), (klo, khi), _rate, (mlo, mhi) = cols
-        events = []  # (sort_y, kind, payload)
-        for line in self._lines(chars, plo, mhi, top, stop):
-            y = sum(c["top"] for c in line) / len(line)
-            prod, pack, mrp = self._txt(line, plo, phi), self._txt(line, klo, khi), self._txt(line, mlo, mhi)
-            if pack and PACK_RE.search(pack):
-                events.append((y, 2, (pack, mrp, y)))
-                stat.rows += 0
-            if prod:
-                up = prod.upper()
-                if up.startswith("PENSOL") and not up.startswith("PENSOL )"):
-                    events.append((y - NAME_LIFT, 0, prod))
-                elif re.fullmatch(r"[A-Z0-9 /&.\-]{6,}", prod) and not re.match(r"(SAE|API)", up):
-                    events.append((y - NAME_LIFT, 1, prod))
-                else:
-                    events.append((y, 3, prod))
+    def _panel(self, words, idx, prod_lo, prod_hi, pack_band, mrp_band, pno, stat, rows, carry):
+        band = lambda lo, hi: [w for w in words if lo <= w["cx"] < hi]
+        events = []
+        for ln in _lines(band(prod_lo, prod_hi)):
+            cy, txt = sum(w["cy"] for w in ln) / len(ln), _text(ln)
+            up = txt.upper()
+            if up.lstrip("|/ ").startswith("PENSOL"):
+                events.append((cy - NAME_LIFT, 0, (clean_name(txt), cy)))
+            elif up in SECTIONS or (txt == txt.upper() and re.search(r"[A-Z]{3}", txt) and not re.match(r"(SAE|API|DOT|\()", up)
+                                     and len(txt.split()) >= 2 and not any(ch.isdigit() for ch in txt)):
+                events.append((cy - NAME_LIFT, 1, txt))
+            else:
+                events.append((cy, 3, txt))
+        mrp_words = band(*mrp_band)
+        for ln in _lines(band(*pack_band)):
+            txt = _text(ln)
+            if not PACK_RE.search(txt) or not re.search(r"\d", txt):
+                continue
+            cy = sum(w["cy"] for w in ln) / len(ln)
+            cand = [w for w in mrp_words if abs(w["cy"] - cy) < ROW_TOL and re.fullmatch(r"\d{1,6}|N/?A", w["t"].upper())]
+            m = min(cand, key=lambda w: abs(w["cy"] - cy)) if cand else None
+            conf = min([w["c"] for w in ln] + ([m["c"]] if m else [0.0]))
+            events.append((cy, 2, (clean_pack(txt), m["t"] if m else "", conf)))
         events.sort(key=lambda e: (e[0], e[1]))
-        cur = None
-        section = ("Lubricants", "OTHER")
-        for _, kind, payload in events:
+        cur, section = None, carry.get(idx, ("Lubricants", "OTHER"))
+        groups = []
+        for ey, kind, payload in events:
             if kind == 1:
-                section = SECTION_CATEGORY.get(payload.upper().strip(), (payload.title(), "OTHER"))
+                section = SECTIONS.get(payload.upper().strip(), (payload.title(), "OTHER"))
                 cur = None
             elif kind == 0:
-                cur = {"name": payload, "specs": [], "section": section}
+                cur = {"name": payload[0], "name_cy": payload[1], "specs": [], "section": section, "first_cy": None, "rows": []}
+                groups.append(cur)
             elif kind == 3 and cur is not None:
-                cur["specs"].append(payload)
+                cur["specs"].append(clean_name(payload))
             elif kind == 2:
-                rows.append(self._build(pno, len(rows) + 1, cur, payload[0], payload[1]))
+                row = self._build(pno, len(rows) + 1, cur, *payload)
+                rows.append(row)
                 stat.rows += 1
+                if cur is not None:
+                    cur["rows"].append(row)
+                    if cur["first_cy"] is None:
+                        cur["first_cy"] = ey
+        for g in groups:  # a name far from its first pack line is an uncertain match: say so
+            if g["first_cy"] is not None and abs(g["first_cy"] - g["name_cy"]) > ALIGN_TOL:
+                for r in g["rows"]:
+                    r.flags.append("check_alignment")
+                    r.data["needs_review"] = True
+                    r.data["review_note"] = "product name sits far from its first pack line on the scan; please verify the match"
+        carry[idx] = section
 
-    def _build(self, pno, n, prod, pack, mrp_txt):
-        flags = ["check_alignment"]
+    def _build(self, pno, n, prod, pack, mrp_txt, conf):
+        flags = ["ocr"]
         mrp = nz.to_number(mrp_txt)
         if mrp is None:
-            flags.append("no_mrp" if mrp_txt.upper() in ("", "NA", "N/A") else "bad_mrp")
+            flags.append("no_mrp" if mrp_txt.upper() in ("NA", "N/A") else "bad_mrp")
         if prod is None:
             flags.append("no_product_name")
             name, specs, (cat, seg) = "UNKNOWN PRODUCT", [], ("Lubricants", "OTHER")
         else:
             name, specs, (cat, seg) = prod["name"], prod["specs"], prod["section"]
-        pack = re.sub(r"\s+", " ", pack).strip()
+        low = conf < LOW_CONF
+        if low:
+            flags.append("low_ocr_confidence")
         data = {
-            "part_no": nz.clean_text(name), "part_no_norm": nz.norm_part(name), "description": nz.clean_text(name + " " + " ".join(specs)),
-            "category": cat, "segment": seg, "oem_name": None, "oem_raw": None, "application": " ".join(specs) or None,
-            "variant_label": pack, "mrp": mrp, "mrp_prev": None, "price_basis": "incl_tax", "gst_pct": None, "hsn": None,
-            "moq": None, "pack_qty": None, "unit": "pack", "image_url": None, "needs_review": True,
-            "review_note": "product/pack match read from a scanned page by position; please verify",
+            "part_no": nz.clean_text(name), "part_no_norm": nz.norm_part(name),
+            "description": nz.clean_text(name + " " + " ".join(specs)), "category": cat, "segment": seg, "oem_name": None,
+            "oem_raw": None, "application": None, "variant_label": pack, "mrp": mrp, "mrp_prev": None,
+            "price_basis": "incl_tax", "gst_pct": None, "hsn": None, "moq": None, "pack_qty": None, "unit": "pack",
+            "image_url": None, "needs_review": low, "review_note": "read by OCR with low confidence" if low else None,
             "source_page": pno, "source_row": n,
         }
         if not data["part_no_norm"]:
             flags.append("missing_part_no")
         return ParsedRow(page=pno, row_no=n, data=data, flags=flags)
+
+    @staticmethod
+    def _litres(pack):
+        """Volume of ONE piece: '4X5 LTR JAR' -> 5, '20 LTR BKT' -> 20, '20X500 ML JAR' -> 0.5."""
+        s = pack.upper().replace(",", ".")
+        m = re.search(r"(?:\d+\s*[X]\s*)?(\d+(?:\.\d+)?)\s*(LTR|LIR|L|ML|KG|GM)\b", s)
+        if not m:
+            return None
+        v = float(m.group(1))
+        return v / 1000 if m.group(2) in ("ML", "GM") else v
+
+    def _price_check(self, rows):
+        groups = {}
+        for r in rows:
+            v = self._litres(r.data["variant_label"])
+            if r.data["mrp"] and v:
+                groups.setdefault(r.data["part_no_norm"], []).append((r, r.data["mrp"] / v))
+        for g in groups.values():
+            if len(g) >= 3:
+                med = statistics.median(p for _, p in g)
+                for r, p in g:
+                    if p > 1.9 * med or p < 0.5 * med:
+                        # OCR often drops a decimal point in the pack size ('75 LTR' for '7.5 LTR', '4X25' for '4X2.5')
+                        v = self._litres(r.data["variant_label"])
+                        if v and 0.7 * med <= r.data["mrp"] / (v / 10) <= 1.4 * med:
+                            r.data["variant_label"] = self._with_decimal(r.data["variant_label"])
+                            r.flags.append("pack_decimal_fixed")
+                            r.data["needs_review"], r.data["review_note"] = True, "pack size had its decimal point restored from the price"
+                        else:
+                            r.flags.append("price_per_litre_outlier")
+
+    @staticmethod
+    def _with_decimal(pack):
+        """'75 LTR BKT' -> '7.5 LTR BKT', '4 X25 LTR JAR' -> '4 X2.5 LTR JAR' (volume of one piece gets a decimal point)."""
+        return re.sub(r"(\d)(\d)(?=\s*(LTR|KG|L)\b)", r"\1.\2", pack, count=1)

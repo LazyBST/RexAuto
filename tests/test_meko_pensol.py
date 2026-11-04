@@ -57,14 +57,7 @@ def test_meko_non_table_pages_are_reported_not_guessed():
         pytest.skip("Meko sample missing")
     res = get_profile("meko").parse(str(MEKO))
     skipped = {p.page for p in res.pages if p.unrecognised}
-    assert {1, 2, 6, 15, 17, 18, 24}.issubset(skipped) and len(res.rows) > 300
-
-
-def test_pensol_never_publishes_guessed_prices_and_flags_ocr():
-    if not PENSOL.exists():
-        pytest.skip("Pensol sample missing")
-    res = get_profile("pensol").parse(str(PENSOL))
-    assert res.rows == [] and [p.page for p in res.pages if p.needs_ocr] == [1, 2]
+    assert {1, 2, 6, 29, 31, 32} == skipped and len(res.rows) == 512
 
 
 def test_search_finds_a_part_by_its_oem_number(conn, meko_small):
@@ -123,5 +116,35 @@ def test_delete_after_ref_edit_restores_original_refs(conn, meko_small):
         return r
     parse.parse_batch(conn, b2, "t", parse_fn=edited)
     assert ap.apply_batch(conn, b2, "t")["updated"] == 1
+    rollback.delete_batch(conn, b2, "t", confirm="meko_small.pdf")
+    assert snapshot(conn) == snap
+
+
+def test_update_only_rows_enrich_without_inserting_or_blanking(conn, meko_small):
+    from ingest.profiles.base import ParseResult, ParsedRow, PageStat
+    path, res = meko_small
+    base = parse.upload_batch(conn, "meko", "meko", path, "t")["batch_id"]
+    parse.parse_batch(conn, base, "t")
+    ap.apply_batch(conn, base, "t")
+    snap = snapshot(conn)
+    cur = cursor(conn)
+    cur.execute("select mrp, application from products where part_no='M-540'")
+    before = cur.fetchone()
+
+    def enrich(_path):
+        rows = [ParsedRow(page=1, row_no=1, data={"part_no_norm": "M540", "variant_label": "", "image_url": "/img/meko/x.jpg", "update_only": True}),
+                ParsedRow(page=1, row_no=2, data={"part_no_norm": "ZZNOPE", "variant_label": "", "image_url": "/img/meko/y.jpg", "update_only": True})]
+        return ParseResult(rows=rows, pages=[PageStat(page=1, rows=2)])
+    b2 = parse.upload_batch(conn, "meko", "meko", path, "t")["batch_id"]
+    parse.parse_batch(conn, b2, "t", parse_fn=enrich)
+    prev = ap.preview(conn, b2)
+    assert (prev["insert"], prev["update"], prev["unmatched"]) == (0, 1, 1)
+    out = ap.apply_batch(conn, b2, "t")
+    assert (out["inserted"], out["updated"], out["unmatched"]) == (0, 1, 1)
+    cur.execute("select mrp, application, image_url from products where part_no='M-540'")
+    after = cur.fetchone()
+    assert after["image_url"] == "/img/meko/x.jpg" and (after["mrp"], after["application"]) == (before["mrp"], before["application"])
+    resync.resync_preview(conn, b2, "t", remove_missing=True, parse_fn=enrich)   # must never delete price-list products
+    assert resync.resync_apply(conn, b2, "t", remove_missing=True)["removed"] == 0
     rollback.delete_batch(conn, b2, "t", confirm="meko_small.pdf")
     assert snapshot(conn) == snap

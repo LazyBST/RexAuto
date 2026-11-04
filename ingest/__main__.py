@@ -44,6 +44,8 @@ def main(argv=None):
             db.ensure_brand(conn, "Car International", "car-international", owned=True)
             db.ensure_brand(conn, "Meko", "meko", owned=True)
             db.ensure_brand(conn, "Pensol", "pensol", owned=True); conn.commit()
+            from .apply import refresh_search_text
+            refresh_search_text(conn.cursor()); conn.commit()
             print("ok")
         elif a.cmd == "upload":
             r = parse.upload_batch(conn, a.brand, a.profile, a.file, actor)

@@ -7,3 +7,6 @@ data/storage/
 data/reports/
 *.pyc
 .pytest_cache/
+data/scratch/
+data/bin/
+data/ocr_cache/

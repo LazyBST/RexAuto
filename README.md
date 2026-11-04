@@ -19,3 +19,10 @@ Production: set `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ME
 No discount / dealer rate / trade cut / margin column exists. Profiles emit only `PRODUCT_FIELDS`
 (`ingest/profiles/base.py`); the Uno Minda profile drops the TD% column's characters before any text lookup.
 `tests/test_never_stored.py` enforces this on the schema, staging, change log, audit log, CSV and search documents.
+
+## Local OCR (scanned pages)
+`tools/ocr.swift` is a small program using Apple's Vision framework (part of macOS; nothing is downloaded or sent anywhere).
+`ingest/ocr.py` compiles it on first use (`swiftc`), renders pages with PyMuPDF and caches results in `data/ocr_cache/`.
+Used by the `pensol` profile (scanned dealer list) and `meko_catalogue` (reads model codes, then attaches the embedded photos
+to products that already exist — an "update_only" enrichment batch that never inserts or changes prices).
+Search is Postgres-only for now (`ingest/pgsearch.py`, text kept in `product_search`); Meilisearch plugs in later behind the same call.

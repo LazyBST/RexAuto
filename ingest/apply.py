@@ -78,7 +78,8 @@ def compute_plan(cur, batch_id, remove_missing=False):
     cur.execute(f"select {STATE_SQL} as j from products p where brand_id=%s", (brand_id,))
     existing = {(r["j"]["part_no_norm"], r["j"]["variant_label"]): r["j"] for r in cur.fetchall()}
     cur.execute("select id, page, row_no, data, flags from batch_rows where batch_id=%s order by id", (batch_id,))
-    plan = {"inserts": [], "updates": [], "unchanged": 0, "removals": [], "held": [], "flagged": 0}
+    plan = {"inserts": [], "updates": [], "unchanged": 0, "removals": [], "held": [], "flagged": 0, "unmatched": []}
+    partial_batch = False
     in_file = set()
     for r in cur.fetchall():
         if r["flags"]:
@@ -90,28 +91,36 @@ def compute_plan(cur, batch_id, remove_missing=False):
         extra = set(r["data"]) - PRODUCT_FIELDS - EXTRA_FIELDS
         if extra:
             raise ValueError(f"staging row {r['id']} holds non-whitelisted fields {sorted(extra)}")
-        d = {**{k: None for k in PRODUCT_FIELDS}, **DEFAULTS, **r["data"]}
+        partial = bool(r["data"].get("update_only"))
+        partial_batch = partial_batch or partial
+        if partial:
+            d = {k: v for k, v in r["data"].items() if k != "update_only"}
+        else:
+            d = {**{k: None for k in PRODUCT_FIELDS}, **DEFAULTS, **r["data"]}
         if "cross_refs" in d:
             d["cross_refs"] = normalise_refs(d["cross_refs"])
         key = (d["part_no_norm"], d["variant_label"])
         in_file.add(key)
         cur_row = existing.get(key)
         if cur_row is None:
+            if partial:
+                plan["unmatched"].append({"part_no": d.get("part_no") or d["part_no_norm"], "page": r["page"]})
+                continue
             plan["inserts"].append({"row": d, "flags": r["flags"]})
             continue
-        changes = {f: [cur_row[f], d[f]] for f in COMPARE_FIELDS if not _same(cur_row[f], d[f])}
+        changes = {f: [cur_row[f], d[f]] for f in COMPARE_FIELDS if f in d and not _same(cur_row[f], d[f])}
         if "cross_refs" in d and {_ref_key(r) for r in cur_row["cross_refs"]} != {_ref_key(r) for r in d["cross_refs"]}:
             changes["cross_refs"] = [[r["ref_part_no"] for r in cur_row["cross_refs"]], [r["ref_part_no"] for r in d["cross_refs"]]]
         if not changes:
             plan["unchanged"] += 1
             continue
         flags = list(r["flags"])
-        old, new = cur_row["mrp"], d["mrp"]
+        old, new = cur_row["mrp"], d.get("mrp")
         if old and new and abs(new - old) / old > MRP_SWING:
             flags.append("mrp_swing")
         plan["updates"].append({"product_id": cur_row["id"], "before": cur_row, "row": d, "changes": changes,
                                 "flags": flags})
-    if remove_missing:
+    if remove_missing and not partial_batch:
         for key, j in existing.items():
             if key not in in_file and j["last_batch_id"] == str(batch_id):
                 plan["removals"].append({"product_id": j["id"], "before": j})
@@ -122,8 +131,9 @@ def summarise(plan, sample=25):
     return {
         "insert": len(plan["inserts"]), "update": len(plan["updates"]), "unchanged": plan["unchanged"],
         "remove": len(plan["removals"]), "held_not_applied": len(plan["held"]), "flagged": plan["flagged"],
+        "unmatched": len(plan["unmatched"]), "sample_unmatched": [u["part_no"] for u in plan["unmatched"][:25]],
         "sample_inserts": [i["row"]["part_no"] for i in plan["inserts"][:sample]],
-        "sample_updates": [{"part_no": u["row"]["part_no"], "changes": u["changes"], "flags": u["flags"]}
+        "sample_updates": [{"part_no": u["row"].get("part_no") or u["row"]["part_no_norm"], "changes": u["changes"], "flags": u["flags"]}
                            for u in plan["updates"][:sample]],
         "sample_removals": [r["before"]["part_no"] for r in plan["removals"][:sample]],
         "mrp_swings": sum(1 for u in plan["updates"] if "mrp_swing" in u["flags"]),
@@ -210,12 +220,30 @@ def apply_batch(conn, batch_id, actor, run_type=None, remove_missing=False):
         raise
     reindex(conn, batch_id, actor, touched)
     return {"run_id": run_id, "inserted": n_ins, "updated": n_upd, "unchanged": plan["unchanged"], "removed": n_rem,
-            "held": len(plan["held"])}
+            "held": len(plan["held"]), "unmatched": len(plan["unmatched"])}
+
+
+SEARCH_TEXT_SQL = """
+insert into product_search(product_id, text)
+select p.id, concat_ws(' ', p.part_no, p.description, p.application, p.oem_name, p.oem_raw, p.category, b.name, p.variant_label,
+       (select string_agg(c.ref_part_no, ' ') from cross_refs c where c.product_id = p.id))
+from products p join brands b on b.id = p.brand_id %s
+on conflict (product_id) do update set text = excluded.text"""
+
+
+def refresh_search_text(cur, product_ids=None):
+    """Rebuild the search text for the given products (all when None). Products that no longer exist drop out by cascade."""
+    if product_ids is None:
+        cur.execute(SEARCH_TEXT_SQL % "")
+    elif product_ids:
+        cur.execute(SEARCH_TEXT_SQL % "where p.id = any(%s::uuid[])", ([str(i) for i in product_ids],))
 
 
 def reindex(conn, batch_id, actor, product_ids):
     from . import index
     cur = cursor(conn)
+    refresh_search_text(cur, product_ids)
+    conn.commit()
     try:
         res = index.sync(conn, product_ids)
     except Exception as e:  # DB is the source of truth; a search outage must not undo a committed apply
