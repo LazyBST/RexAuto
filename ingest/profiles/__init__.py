@@ -1,6 +1,7 @@
-from . import fras_le, uno_minda
+from . import fras_le, neolite, uno_minda
 
-PROFILES = {"uno_minda": uno_minda.UnoMindaProfile(), "fras_le": fras_le.FrasLeProfile()}
+PROFILES = {"uno_minda": uno_minda.UnoMindaProfile(), "fras_le": fras_le.FrasLeProfile(),
+            "neolite": neolite.NeoliteProfile()}
 
 
 def get_profile(name):
