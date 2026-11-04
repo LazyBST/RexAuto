@@ -85,3 +85,15 @@ then uses the real visitor address). The app is read-only; there is no admin log
 Admin login and upload/batch screens (the CLI does this today), Meilisearch (search is Postgres; typos and "waterpump"-style
 queries are the known weakness), the `Neo-Catelogue Design-1.pdf` profile (bulb fitment per Neolite code; `attributes` and the
 update-only enrichment path are ready for it), a backup routine beyond Supabase's own daily backups, CI.
+
+## 7. Public site on Vercel (Next.js app in `apps/web`)
+
+The Next.js app replaces the FastAPI container for the public site. It reads the same database (search logic is a port of `ingest/pgsearch.py`).
+
+1. Push this repo to GitHub (private). Nothing in git contains data or secrets.
+2. Vercel > Add New > Project > import the repo. **Root Directory: `apps/web`**. Framework: Next.js (auto).
+3. Environment variables (copy from `apps/web/.env.example`): `DATABASE_URL` (Supabase pooler string), `SITE_NAME`, `WHATSAPP_NUMBER`.
+   The Supabase service-role key is **not** needed on Vercel; the site only reads. Keep it on this Mac for the loader.
+4. Deploy. Photos load straight from the Supabase public `product-images` bucket (full URLs are stored on each product).
+5. Vercel > Firewall: add a rate-limit rule on `/api/*` (the in-app limiter is per server instance only).
+6. Local run against any database: `cd apps/web && npm run dev` with the same variables (or `PGHOST/PGDATABASE/PGUSER`).
