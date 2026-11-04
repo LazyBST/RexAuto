@@ -133,7 +133,11 @@ class CarInternationalProfile:
         models = list(dict.fromkeys(k.title() for k, m, _ in found if m and k != m.upper()))
         segs = [s for _, _, s in found if s]
         segment = next((s for s in ("HCV", "LCV", "CAR", "OTHER") if s in segs), "OTHER")
-        if not found:
+        if not makes and re.search(r"(?<![A-Z0-9])VAN(?![A-Z0-9])", d) and not segs:
+            # "VAN" with no other vehicle named: the Maruti vans (Omni / Eeco) are what these catalogue lines mean
+            makes, segment = ["Maruti Suzuki"], "CAR"
+            flags.append("vehicle_guess")
+        elif not found:
             flags.append("no_vehicle_detected")
         data = {
             "part_no": part, "part_no_norm": nz.norm_part(part), "description": desc or None,

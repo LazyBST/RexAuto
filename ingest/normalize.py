@@ -27,3 +27,20 @@ def clean_text(s):
 def load_csv(name):
     with open(CONFIG_DIR / name, newline="", encoding="utf-8") as f:
         return list(csv.DictReader(f))
+
+
+def load_aliases():
+    """(map, guessed): raw code -> make, and the set of raw codes that come from the guess file
+    (data/config/make_aliases_guess.csv: best guesses waiting for the owner's confirmation)."""
+    amap, guessed = {}, set()
+    for r in load_csv("make_aliases.csv"):
+        amap[r["raw"].strip().upper()] = r["make"]
+    try:
+        for r in load_csv("make_aliases_guess.csv"):
+            k = r["raw"].strip().upper()
+            if k not in amap:
+                amap[k] = r["make"]
+                guessed.add(k)
+    except FileNotFoundError:
+        pass
+    return amap, guessed

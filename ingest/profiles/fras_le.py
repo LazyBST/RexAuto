@@ -29,7 +29,7 @@ class FrasLeProfile:
     parser_version = PARSER_VERSION
 
     def parse(self, pdf_path):
-        aliases = {r["raw"].strip().upper(): r["make"] for r in nz.load_csv("make_aliases.csv")}
+        aliases, self._guessed = nz.load_aliases()
         rows, pages = [], []
         state = {"group": None, "app": "", "n": 0, "groups_seen": []}
         with pdfplumber.open(pdf_path) as pdf:
@@ -121,6 +121,8 @@ class FrasLeProfile:
         oem_name = aliases.get(oem_raw.upper())
         if oem_raw and oem_name is None:
             flags.append("unknown_oem")
+        elif oem_name and oem_raw.upper() in self._guessed:
+            flags.append("oem_guess")
         seg = SEGMENTS.get(t["seg"].upper())
         if seg is None:
             seg = "OTHER"

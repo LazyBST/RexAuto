@@ -41,7 +41,9 @@ class NeoliteProfile:
     parser_version = PARSER_VERSION
 
     def parse(self, pdf_path):
-        aliases = {self._key(r["raw"]): r["make"] for r in nz.load_csv("make_aliases.csv")}
+        amap, guessed = nz.load_aliases()
+        aliases = {self._key(k): v for k, v in amap.items()}
+        self._guessed = {self._key(k) for k in guessed}
         rows, pages = [], []
         state = {"section": None, "n": 0, "unmapped": set(), "notes": []}
         with pdfplumber.open(pdf_path) as pdf:
@@ -129,16 +131,17 @@ class NeoliteProfile:
                     st["unmapped"].add(title)
 
     def _section(self, title, aliases):
-        make, rest = None, title
+        make, rest, matched = None, title, None
         for n in (1, 2):
             parts = re.split(r"[\s/]+", title, maxsplit=n)
             k = self._key("".join(parts[:n]))
             if len(parts) > n - 1 and k in aliases:
-                make, rest = aliases[k], (parts[n] if len(parts) > n else "")
+                make, rest, matched = aliases[k], (parts[n] if len(parts) > n else ""), k
                 break
         generic = bool(re.search(r"LIGHTS?|LAMPS?|HORNS?|ITEMS|RANGE|TRACTOR", title.upper()))
         label = f"{make} {rest}".strip() if make else title
-        return {"title": title, "make": make, "label": label, "generic": generic}
+        guess = bool(matched) and matched in self._guessed
+        return {"title": title, "make": make, "label": label, "generic": generic, "guess": guess}
 
     @staticmethod
     def _category(desc):
@@ -174,6 +177,8 @@ class NeoliteProfile:
         }
         if sec is None:
             flags.append("no_section")
+        elif sec.get("guess"):
+            flags.append("oem_guess")
         row = ParsedRow(page=pno, row_no=st["n"], data=data, flags=flags)
         row._sections = [sec] if sec else []
         return row

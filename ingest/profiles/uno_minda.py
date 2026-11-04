@@ -30,6 +30,7 @@ MIN_WORDS_FOR_TEXT_LAYER = 30
 PGROUP_TEXT_START = 82.0
 GAP_AS_SPACE = 1.0
 SEGMENTS = {"HCV": "HCV", "CAR": "CAR", "TTR": "TRACTOR", "LCV": "LCV"}
+SEGMENT_GUESSES = {"4WH": "CAR"}  # the segment cell repeats the CLASS value on some rows; these are mostly car parts
 
 
 class UnoMindaProfile:
@@ -66,7 +67,7 @@ class UnoMindaProfile:
         return out
 
     def _load_config(self):
-        aliases = {r["raw"].strip().upper(): r["make"] for r in nz.load_csv("make_aliases.csv")}
+        aliases, self._guessed = nz.load_aliases()
         cats = {r["source_code"].strip().upper(): r["category"]
                 for r in nz.load_csv("category_map.csv") if r["brand_slug"] == BRAND_SLUG}
         return aliases, cats
@@ -188,12 +189,17 @@ class UnoMindaProfile:
         oem_name = self._map_oem(oem_raw, aliases)
         if oem_raw not in ("", "-") and oem_name is None:
             flags.append("unknown_oem")
+        elif oem_name and self._uses_guess(oem_raw):
+            flags.append("oem_guess")
         pgroup = c["pgroup"].upper()
         category = cats.get(pgroup)
         if category is None:
             flags.append("unknown_pgroup")
         seg = SEGMENTS.get(c["segment"].upper())
-        if seg is None:
+        if seg is None and c["segment"].upper() in SEGMENT_GUESSES:
+            seg = SEGMENT_GUESSES[c["segment"].upper()]
+            flags.append("segment_guess")
+        elif seg is None:
             seg = "OTHER"
             flags.append("unknown_segment")
         hsn = re.sub(r"\D", "", c["hsn"])
@@ -232,6 +238,10 @@ class UnoMindaProfile:
             "source_row": int(c["sno"]) if c["sno"].isdigit() else None,
         }
         return ParsedRow(page=pno, row_no=data["source_row"] or 0, data=data, flags=flags)
+
+    def _uses_guess(self, raw):
+        parts = [raw.upper().strip()] + [p.strip() for p in re.split(r"[/,&]", raw.upper()) if p.strip()]
+        return any(p in getattr(self, "_guessed", ()) or p.strip(".") in getattr(self, "_guessed", ()) for p in parts)
 
     @staticmethod
     def _map_oem(raw, aliases):
