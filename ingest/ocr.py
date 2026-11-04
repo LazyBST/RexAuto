@@ -45,10 +45,13 @@ def _split_glued(words):
     return out
 
 
-def ocr_png(png: bytes):
-    key = hashlib.sha256(png).hexdigest()
+def ocr_png(png: bytes, drop=None, tag="", cache=True):
+    """OCR one page image. `drop(words) -> words` removes words BEFORE anything is cached or returned, so material that must
+    never be stored (e.g. a dealer-rate column) does not reach disk through the cache; `tag` keeps filtered and unfiltered
+    results apart."""
+    key = hashlib.sha256(png).hexdigest() + (("-" + tag) if tag else "")
     cached = CACHE / f"{key}.json"
-    if cached.exists():
+    if cache and cached.exists():
         return json.loads(cached.read_text())
     _ensure_binary()
     CACHE.mkdir(parents=True, exist_ok=True)
@@ -59,12 +62,61 @@ def ocr_png(png: bytes):
     finally:
         tmp.unlink(missing_ok=True)
     words = _split_glued(json.loads(out.stdout))
+    if drop:
+        words = drop(words)
     for w in words:
         w["cx"], w["cy"] = w["x"] + w["w"] / 2, w["y"] + w["h"] / 2
-    cached.write_text(json.dumps(words))
+    if cache:
+        cached.write_text(json.dumps(words))
     return words
 
 
-def ocr_page(pdf_path, page_index, dpi=DPI):
+def _raw(png: bytes):
+    """Words straight from the engine (nothing cached, nothing dropped)."""
+    key = hashlib.sha256(png).hexdigest()
+    _ensure_binary()
+    CACHE.mkdir(parents=True, exist_ok=True)
+    tmp = CACHE / f"{key}.tmp.png"
+    tmp.write_bytes(png)
+    try:
+        out = subprocess.run([str(BIN), str(tmp)], capture_output=True, text=True, check=True)
+    finally:
+        tmp.unlink(missing_ok=True)
+    return _split_glued(json.loads(out.stdout))
+
+
+def ocr_tiled(page, dpi=DPI, drop=None, tag="", cache=True):
+    """OCR the whole page, then its left and right parts again (with an overlap) and merge. The engine sometimes leaves a
+    column of numbers out of a full-page read; a narrower view brings them back. Same word seen twice -> kept once."""
+    full_png = render(page, dpi)
+    key = hashlib.sha256(full_png).hexdigest() + "-tiled" + (("-" + tag) if tag else "")
+    cached = CACHE / f"{key}.json"
+    if cache and cached.exists():
+        return json.loads(cached.read_text())
+    words = _raw(full_png)
+    k, rect = dpi / 72, page.rect
+    for x0, x1 in ((0.0, 0.58), (0.42, 1.0)):
+        clip = fitz.Rect(rect.x0 + x0 * rect.width, rect.y0, rect.x0 + x1 * rect.width, rect.y1)
+        for w in _raw(page.get_pixmap(dpi=dpi, clip=clip).tobytes("png")):
+            w["x"] += (clip.x0 - rect.x0) * k
+            w["y"] += (clip.y0 - rect.y0) * k
+            # keep a tile word only if nothing from the first read sits where it is (whatever that read made of the text)
+            if not any(abs((v["x"] + v["w"] / 2) - (w["x"] + w["w"] / 2)) < max(v["w"], w["w"]) / 2 + 3
+                       and abs((v["y"] + v["h"] / 2) - (w["y"] + w["h"] / 2)) < max(v["h"], w["h"]) / 2 for v in words):
+                words.append(w)
+    if drop:
+        words = drop(words)
+    for w in words:
+        w["cx"], w["cy"] = w["x"] + w["w"] / 2, w["y"] + w["h"] / 2
+    if cache:
+        CACHE.mkdir(parents=True, exist_ok=True)
+        cached.write_text(json.dumps(words))
+    return words
+
+
+def ocr_page(pdf_path, page_index, dpi=DPI, drop=None, tag="", tiled=False):
     doc = fitz.open(pdf_path)
-    return ocr_png(render(doc[page_index], dpi)), doc[page_index].rect
+    page = doc[page_index]
+    if tiled:
+        return ocr_tiled(page, dpi, drop=drop, tag=tag), page.rect
+    return ocr_png(render(page, dpi), drop=drop, tag=tag), page.rect

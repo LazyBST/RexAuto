@@ -11,6 +11,8 @@ def batch_report(conn, batch_id):
     cur.execute("""select b.*, br.name as brand from import_batches b join brands br on br.id=b.brand_id
                    where b.id=%s""", (batch_id,))
     b = cur.fetchone()
+    if b is None:
+        raise SystemExit("no such batch")
     cur.execute("""select page, count(*) n, min((data->>'source_row')::int) first_no, max((data->>'source_row')::int) last_no
                    from batch_rows where batch_id=%s group by page order by page""", (batch_id,))
     pages = cur.fetchall()

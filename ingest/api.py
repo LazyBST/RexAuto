@@ -10,7 +10,7 @@ from fastapi.responses import PlainTextResponse
 from . import apply as ap
 from . import db, parse, report, resync, rollback
 
-app = FastAPI(title="catalogue-ingest")
+app = FastAPI(title="catalogue-ingest", docs_url=None, redoc_url=None, openapi_url=None)
 
 
 def auth(x_secret: str = Header(""), x_actor: str = Header("")):

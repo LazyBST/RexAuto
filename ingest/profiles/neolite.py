@@ -46,7 +46,9 @@ class NeoliteProfile:
         self._guessed = {self._key(k) for k in guessed}
         rows, pages = [], []
         state = {"section": None, "n": 0, "unmapped": set(), "notes": []}
+        eff = None
         with pdfplumber.open(pdf_path) as pdf:
+            eff = nz.date_after(pdf.pages[0].extract_text(), "W.E.F")
             for pno, page in enumerate(pdf.pages, start=1):
                 stat = PageStat(page=pno, words=len(page.extract_words()))
                 pages.append(stat)
@@ -55,6 +57,7 @@ class NeoliteProfile:
                     continue
                 self._page(page, pno, stat, rows, aliases, state)
         merged = self._merge(rows, pages)
+        nz.stamp(rows, eff)
         if state["unmapped"] and pages:
             pages[0].note = (pages[0].note + "; " if pages[0].note else "") + \
                 "sections with no recognised make (check make_aliases.csv): " + ", ".join(sorted(state["unmapped"]))
@@ -171,7 +174,7 @@ class NeoliteProfile:
             "part_no": code, "part_no_norm": nz.norm_part(code), "description": desc or None,
             "category": self._category(desc), "segment": self._segment(sec), "oem_name": sec["make"] if sec else None,
             "oem_raw": None, "application": sec["label"] if sec else None, "variant_label": "", "mrp": mrp,
-            "mrp_prev": mrp_prev, "price_basis": "unknown", "gst_pct": None, "hsn": None, "moq": None,
+            "mrp_prev": mrp_prev, "price_basis": nz.price_basis(BRAND_SLUG), "gst_pct": None, "hsn": None, "moq": None,
             "pack_qty": int(pack) if pack else None, "unit": unit_raw.lower() or None, "image_url": None,
             "needs_review": False, "review_note": None, "source_page": pno, "source_row": st["n"],
         }
@@ -237,6 +240,7 @@ class NeoliteProfile:
                 r.flags.append("alt_descriptions")
             secs = r._sections
             if secs:
+                r.data["attributes"] = {"sections": list(dict.fromkeys(x["title"] for x in secs))}
                 r.data["application"] = "; ".join(dict.fromkeys(s["label"] for s in secs))
                 makes = list(dict.fromkeys(s["make"] for s in secs if s["make"]))
                 r.data["oem_name"] = " / ".join(makes) or None

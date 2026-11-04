@@ -1,0 +1,3 @@
+-r requirements.txt
+pgserver   # local Postgres without Docker
+pytest

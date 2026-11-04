@@ -32,6 +32,7 @@ class MekoProfile:
         keys = self._make_keys()
         rows, pages = [], []
         doc = fitz.open(pdf_path)
+        eff = nz.find_date(doc[0].get_text())
         for pno, page in enumerate(doc, start=1):
             words = self._words(page)
             stat = PageStat(page=pno, words=len(words))
@@ -42,6 +43,7 @@ class MekoProfile:
             self._page(words, pno, stat, rows, keys)
             if stat.unrecognised and self._page_z(page.get_text("text"), pno, stat, rows, keys):
                 stat.unrecognised, stat.note = False, "Z-series cards"
+        nz.stamp(rows, eff)
         return ParseResult(rows=rows, pages=pages)
 
     def _page_z(self, text, pno, stat, rows, keys):
@@ -60,7 +62,7 @@ class MekoProfile:
                 "part_no": part, "part_no_norm": nz.norm_part(part), "description": "Water pump assembly (Z series)",
                 "category": "Water Pumps", "segment": "HCV", "oem_name": self._find_make(app.upper(), keys), "oem_raw": None,
                 "application": app or None, "variant_label": "", "mrp": nz.to_number(price), "mrp_prev": None,
-                "price_basis": "unknown", "gst_pct": None, "hsn": None, "moq": None, "pack_qty": None, "unit": None,
+                "price_basis": nz.price_basis(BRAND_SLUG), "gst_pct": None, "hsn": None, "moq": None, "pack_qty": None, "unit": None,
                 "image_url": None, "needs_review": False, "review_note": None, "source_page": pno,
                 "source_row": 9000 + len(rows) + 1, "cross_refs": refs,
             }
@@ -217,7 +219,7 @@ class MekoProfile:
                 "part_no": part, "part_no_norm": nz.norm_part(part), "description": nz.clean_text(sub).capitalize() or "Water pump kit",
                 "category": "Water Pump " + kind, "segment": seg, "oem_name": self._find_make(app.upper(), keys),
                 "oem_raw": div or None, "application": app or None, "variant_label": "", "mrp": mrp, "mrp_prev": None,
-                "price_basis": "unknown", "gst_pct": None, "hsn": None, "moq": None, "pack_qty": None, "unit": None,
+                "price_basis": nz.price_basis(BRAND_SLUG), "gst_pct": None, "hsn": None, "moq": None, "pack_qty": None, "unit": None,
                 "image_url": None, "needs_review": False, "review_note": None, "source_page": pno, "source_row": int(sno),
                 "cross_refs": [],
             }
@@ -269,7 +271,7 @@ class MekoProfile:
         data = {
             "part_no": part, "part_no_norm": nz.norm_part(part), "description": desc_title,
             "category": category, "segment": seg, "oem_name": make, "oem_raw": sec, "application": app or None,
-            "variant_label": "", "mrp": mrp, "mrp_prev": None, "price_basis": "unknown", "gst_pct": None, "hsn": None,
+            "variant_label": "", "mrp": mrp, "mrp_prev": None, "price_basis": nz.price_basis(BRAND_SLUG), "gst_pct": None, "hsn": None,
             "moq": None, "pack_qty": None, "unit": None, "image_url": None, "needs_review": False, "review_note": None,
             "source_page": pno, "source_row": int(sno), "cross_refs": refs,
         }

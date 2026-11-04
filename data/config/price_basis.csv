@@ -1,0 +1,7 @@
+brand_slug,basis,status,note
+uno-minda,unknown,unconfirmed,"the list has separate GST% and MRP columns"
+fras-le,ex_tax,confirmed,"footer: prices do not include GST"
+neolite,unknown,unconfirmed,
+car-international,unknown,unconfirmed,"column is called NEW LIST, GST rate printed separately"
+meko,unknown,unconfirmed,
+pensol,incl_tax,confirmed,"footer: prices are inclusive of all taxes"

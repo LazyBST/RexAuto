@@ -8,12 +8,7 @@ from ingest import apply as ap, index, parse, report
 from ingest.profiles import uno_minda
 from ingest.profiles.base import PRODUCT_FIELDS
 
-FORBIDDEN = {"discount", "disc", "td", "rate", "dealer", "trade", "margin", "net", "scheme", "cut", "distributor"}
-ALLOWED_NAMES = {"gst_pct"}
-
-
-def bad_name(name):
-    return name not in ALLOWED_NAMES and bool(FORBIDDEN & set(re.split(r"[^a-z0-9]+", name.lower())))
+from ingest.rules import bad_name  # noqa: E402
 
 
 def test_whitelist_has_no_forbidden_names():
@@ -84,3 +79,25 @@ def test_archived_copy_is_redacted_and_parses_identically(conn, small_pdf, parse
             assert "%" not in text and "TD" not in text
     again = uno_minda.UnoMindaProfile().parse(str(archived))
     assert [(r.data, r.flags) for r in again.rows] == [(r.data, r.flags) for r in parsed_small.rows]
+
+
+@pytest.mark.parametrize("name", ["discount_pct", "td_pct", "dealer_price", "trade_cut", "net_price", "margin", "scheme_amt",
+                                  "cut_pct", "distributor_rate", "dealer_rate", "cd_pct", "ndp", "dp", "wholesale_price",
+                                  "purchase_price", "landing_cost", "cost_price", "TDPercent", "tradeDiscount", "tdpct",
+                                  "dealerrate", "disc", "discount%"])
+def test_every_plausible_discount_name_would_fail_the_build(name):
+    assert bad_name(name)
+
+
+@pytest.mark.parametrize("name", ["gst_pct", "mrp", "mrp_prev", "part_no", "price_basis", "pack_qty", "price_effective_from",
+                                  "attributes", "locked_fields", "image_url", "stock_status"])
+def test_real_columns_are_not_flagged(name):
+    assert not bad_name(name)
+
+
+def test_every_real_column_and_attribute_key_is_clean(conn):
+    from ingest.profiles.base import ATTRIBUTE_KEYS, CHILD_FIELDS
+    cur = conn.cursor()
+    cur.execute("select table_name, column_name from information_schema.columns where table_schema='public'")
+    assert not [(t, c) for t, c in cur.fetchall() if bad_name(c)]
+    assert not [k for k in ATTRIBUTE_KEYS | {f for v in CHILD_FIELDS.values() for f in v} if bad_name(k)]

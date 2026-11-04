@@ -135,7 +135,8 @@ def test_hard_flagged_rows_are_staged_but_never_applied(conn, small_pdf, parsed_
     assert out["held"] == 1 and out["inserted"] == len(applicable(parsed_small))
 
 
-def test_pages_without_text_layer_are_listed_not_guessed(conn, tmp_path):
+def test_pages_without_text_layer_are_listed_not_guessed(conn, tmp_path, monkeypatch):
+    monkeypatch.setenv("REDACT_ON_UPLOAD", "0")   # a blank page has no discount column to redact
     doc = fitz.open()
     doc.new_page()
     pdf = tmp_path / "scan.pdf"
@@ -216,3 +217,15 @@ def test_search_index_matches_database_after_each_operation(conn, small_pdf, par
     cur.execute("select count(*) n from audit_events where event_type='search_reindexed'")
     assert cur.fetchone()["n"] >= 3
     srv.shutdown()
+
+
+def test_upload_is_refused_when_the_discount_column_cannot_be_redacted(conn, tmp_path):
+    doc = fitz.open()
+    doc.new_page()
+    pdf = tmp_path / "blank.pdf"
+    doc.save(pdf)
+    with pytest.raises(SystemExit, match="cannot be archived safely"):
+        parse.upload_batch(conn, "uno-minda", "uno_minda", pdf, "tester")
+    cur = conn.cursor()
+    cur.execute("select count(*) from import_batches")
+    assert cur.fetchone()[0] == 0

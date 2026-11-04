@@ -1,17 +1,23 @@
-"""plan (preview) and apply. The preview and the apply use the exact same plan function."""
+"""plan (preview) and apply. The preview and the apply use the exact same plan function.
+
+Writes are set-based (execute_values / execute_batch / one statement per page of products): against a hosted database a
+round trip per row would make a 100k-product load take hours."""
+import uuid
 from decimal import Decimal
 
 import psycopg2.extras as ex
 
 from . import audit
+from . import children as kids
+from .children import CHILDREN, STATE_SQL
 from .db import cursor
-from . import normalize as nz
 from .profiles.base import EXTRA_FIELDS, HARD_FLAGS, PRODUCT_FIELDS
 
 LOCK_KEY = 7001  # serialises every writer of `products` (apply, resync, delete)
-DEFAULTS = {"price_basis": "unknown", "variant_label": "", "needs_review": False}
+DEFAULTS = {"price_basis": "unknown", "variant_label": "", "needs_review": False, "attributes": {}}
 POSITION_FIELDS = {"source_page", "source_row"}
 COMPARE_FIELDS = sorted(PRODUCT_FIELDS - POSITION_FIELDS)
+JSON_COLS = {"attributes"}
 MRP_SWING = 0.40
 
 
@@ -25,51 +31,22 @@ def _same(a, b):
     return a == b
 
 
-STATE_SQL = ("to_jsonb(p.*) || jsonb_build_object('cross_refs', coalesce((select jsonb_agg(to_jsonb(c.*) - 'product_id' "
-             "order by c.ref_type, c.ref_part_no_norm, c.ref_brand, c.id) from cross_refs c where c.product_id = p.id), '[]'::jsonb))")
-
-
-def fetch_state(cur, pid):
-    """The product row plus its cross refs, as one jsonb document (what change_log stores)."""
-    cur.execute(f"select {STATE_SQL} as j from products p where p.id = %s", (pid,))
-    r = cur.fetchone()
-    return r["j"] if r else None
-
-
-def _ref_key(r):
-    return (r["ref_type"], (r.get("ref_brand") or ""), nz.norm_part(r["ref_part_no"]))
-
-
-def normalise_refs(refs):
-    out, seen = [], set()
-    for r in refs or []:
-        if not nz.norm_part(r.get("ref_part_no")):
-            continue
-        r = {"ref_type": r["ref_type"], "ref_brand": r.get("ref_brand"), "ref_part_no": r["ref_part_no"].strip(), "note": r.get("note")}
-        if _ref_key(r) not in seen:
-            seen.add(_ref_key(r))
-            out.append(r)
+def fetch_states(cur, pids):
+    """{product id (str): state document} for the products that exist."""
+    out = {}
+    for part in kids.chunks([str(p) for p in pids], 2000):
+        cur.execute(f"select p.id, {STATE_SQL} as j from products p where p.id = any(%s::uuid[])", (part,))
+        for r in cur.fetchall():
+            out[str(r["id"])] = r["j"]
     return out
-
-
-def write_refs(cur, pid, refs):
-    cur.execute("delete from cross_refs where product_id = %s", (pid,))
-    for r in refs:
-        cur.execute("insert into cross_refs(product_id, ref_type, ref_brand, ref_part_no, ref_part_no_norm, note) "
-                    "values (%s,%s,%s,%s,%s,%s)", (pid, r["ref_type"], r.get("ref_brand"), r["ref_part_no"],
-                                                    nz.norm_part(r["ref_part_no"]), r.get("note")))
-
-
-def restore_refs(cur, pid, refs):
-    """Put back the exact rows (same ids) a change_log entry recorded."""
-    cur.execute("delete from cross_refs where product_id = %s", (pid,))
-    if refs:
-        cur.execute("insert into cross_refs select * from jsonb_populate_recordset(null::cross_refs, %s)",
-                    (ex.Json([{**r, "product_id": str(pid)} for r in refs]),))
 
 
 def lock(cur):
     cur.execute("select pg_advisory_xact_lock(%s)", (LOCK_KEY,))
+
+
+def jsonb_or_null(v):
+    return ex.Json(v) if v is not None else None
 
 
 def compute_plan(cur, batch_id, remove_missing=False):
@@ -97,8 +74,9 @@ def compute_plan(cur, batch_id, remove_missing=False):
             d = {k: v for k, v in r["data"].items() if k != "update_only"}
         else:
             d = {**{k: None for k in PRODUCT_FIELDS}, **DEFAULTS, **r["data"]}
-        if "cross_refs" in d:
-            d["cross_refs"] = normalise_refs(d["cross_refs"])
+        for kind in CHILDREN:
+            if kind in d:
+                d[kind] = kids.normalise(kind, d[kind])
         key = (d["part_no_norm"], d["variant_label"])
         in_file.add(key)
         cur_row = existing.get(key)
@@ -108,9 +86,15 @@ def compute_plan(cur, batch_id, remove_missing=False):
                 continue
             plan["inserts"].append({"row": d, "flags": r["flags"]})
             continue
+        if partial and "attributes" in d:     # an enrichment adds attribute keys; it never wipes the ones already there
+            d["attributes"] = {**(cur_row.get("attributes") or {}), **d["attributes"]}
+        locked = set(cur_row.get("locked_fields") or [])  # fields edited by hand: the file must not overwrite them
+        if locked:
+            d = {k: v for k, v in d.items() if k not in locked}
         changes = {f: [cur_row[f], d[f]] for f in COMPARE_FIELDS if f in d and not _same(cur_row[f], d[f])}
-        if "cross_refs" in d and {_ref_key(r) for r in cur_row["cross_refs"]} != {_ref_key(r) for r in d["cross_refs"]}:
-            changes["cross_refs"] = [[r["ref_part_no"] for r in cur_row["cross_refs"]], [r["ref_part_no"] for r in d["cross_refs"]]]
+        for kind in CHILDREN:
+            if kind in d and kids.differs(kind, cur_row[kind], d[kind]):
+                changes[kind] = [[kids.label(kind, x) for x in cur_row[kind]], [kids.label(kind, x) for x in d[kind]]]
         if not changes:
             plan["unchanged"] += 1
             continue
@@ -145,13 +129,19 @@ def preview(conn, batch_id, remove_missing=False):
 
 
 def _cols(d):
-    return [c for c in sorted(PRODUCT_FIELDS) if c in d]  # cross_refs is not a column; it is written separately
+    return tuple(c for c in sorted(PRODUCT_FIELDS) if c in d)  # child keys are not columns; they are written separately
+
+
+def _val(col, v):
+    return ex.Json(v if v is not None else {}) if col in JSON_COLS else v
 
 
 def apply_batch(conn, batch_id, actor, run_type=None, remove_missing=False):
     cur = cursor(conn)
     cur.execute("select * from import_batches where id=%s", (batch_id,))
     b = cur.fetchone()
+    if b is None:
+        raise SystemExit("no such batch")
     if b["status"] not in ("needs_review", "ready"):
         raise SystemExit(f"batch is {b['status']}; parse it first (needs_review/ready) before applying")
     if run_type is None:
@@ -164,43 +154,52 @@ def apply_batch(conn, batch_id, actor, run_type=None, remove_missing=False):
         cur.execute("""insert into sync_runs(batch_id, run_type, parser_version, actor) values (%s,%s,%s,%s)
                        returning id""", (batch_id, run_type, b["parser_version"], actor))
         run_id = cur.fetchone()["id"]
-        touched = []
+        inserts, updates, removals = plan["inserts"], plan["updates"], plan["removals"]
+        kid_rows = {k: {} for k in CHILDREN}          # kind -> {product id: rows to write}
 
-        def log_change(pid, action, before, after):
-            cur.execute("insert into change_log(run_id, batch_id, product_id, action, before, after) "
-                        "values (%s,%s,%s,%s,%s,%s)", (run_id, batch_id, pid, action, ex.Json(before), ex.Json(after)))
+        # inserts: ids are made here so no row needs RETURNING; one statement per page, grouped by column set
+        new_ids, by_cols = [], {}
+        for item in inserts:
+            pid = str(uuid.uuid4())
+            new_ids.append(pid)
+            by_cols.setdefault(_cols(item["row"]), []).append((pid, item["row"]))
+            for k in CHILDREN:
+                if k in item["row"]:
+                    kid_rows[k][pid] = item["row"][k]
+        for cols, items in by_cols.items():
+            ex.execute_values(
+                cur, f"insert into products (id, brand_id, first_batch_id, last_batch_id, {', '.join(cols)}) values %s",
+                [(pid, b["brand_id"], batch_id, batch_id) + tuple(_val(c, d[c]) for c in cols) for pid, d in items],
+                page_size=500)
 
-        for item in plan["inserts"]:
-            d = item["row"]
-            cols = _cols(d)
-            cur.execute(
-                f"insert into products(brand_id, first_batch_id, last_batch_id, {', '.join(cols)}) "
-                f"values (%s,%s,%s,{', '.join(['%s'] * len(cols))}) returning to_jsonb(products.*) as j",
-                [b["brand_id"], batch_id, batch_id] + [d[c] for c in cols])
-            j = cur.fetchone()["j"]
-            if "cross_refs" in d:
-                write_refs(cur, j["id"], d["cross_refs"])
-            j = fetch_state(cur, j["id"])
-            log_change(j["id"], "insert", None, j)
-            touched.append(j["id"])
-        for item in plan["updates"]:
-            d = item["row"]
-            cols = _cols(d)
-            cur.execute(
-                f"update products set {', '.join(c + ' = %s' for c in cols)}, last_batch_id = %s, updated_at = now() "
-                f"where id = %s returning to_jsonb(products.*) as j",
-                [d[c] for c in cols] + [batch_id, item["product_id"]])
-            if "cross_refs" in d and "cross_refs" in item["changes"]:
-                write_refs(cur, item["product_id"], d["cross_refs"])
-            j = fetch_state(cur, item["product_id"])
-            log_change(item["product_id"], "update", item["before"], j)
-            touched.append(item["product_id"])
-        for item in plan["removals"]:
-            cur.execute("delete from products where id = %s", (item["product_id"],))
-            log_change(item["product_id"], "delete", item["before"], None)
-            touched.append(item["product_id"])
+        # updates: grouped by column set, pipelined in pages
+        by_cols = {}
+        for item in updates:
+            by_cols.setdefault(_cols(item["row"]), []).append(item)
+            for k in CHILDREN:
+                if k in item["changes"]:
+                    kid_rows[k][str(item["product_id"])] = item["row"][k]
+        for cols, items in by_cols.items():
+            sql = f"update products set {', '.join(c + ' = %s' for c in cols)}, last_batch_id = %s, updated_at = now() where id = %s"
+            ex.execute_batch(cur, sql, [[_val(c, it["row"][c]) for c in cols] + [batch_id, str(it["product_id"])] for it in items],
+                             page_size=500)
+        for k, rows in kid_rows.items():
+            kids.write(cur, k, rows)
 
-        n_ins, n_upd, n_rem = len(plan["inserts"]), len(plan["updates"]), len(plan["removals"])
+        for part in kids.chunks([str(r["product_id"]) for r in removals], 2000):
+            cur.execute("delete from products where id = any(%s::uuid[])", (part,))
+
+        # history: one state read for everything written, one insert per page of log rows
+        states = fetch_states(cur, new_ids + [str(u["product_id"]) for u in updates])
+        log = [(run_id, batch_id, pid, "insert", None, jsonb_or_null(states[pid])) for pid in new_ids]
+        log += [(run_id, batch_id, str(u["product_id"]), "update", jsonb_or_null(u["before"]),
+                 jsonb_or_null(states[str(u["product_id"])])) for u in updates]
+        log += [(run_id, batch_id, str(r["product_id"]), "delete", jsonb_or_null(r["before"]), None) for r in removals]
+        ex.execute_values(cur, "insert into change_log(run_id, batch_id, product_id, action, before, after) values %s", log,
+                          page_size=500)
+        touched = new_ids + [str(u["product_id"]) for u in updates] + [str(r["product_id"]) for r in removals]
+
+        n_ins, n_upd, n_rem = len(inserts), len(updates), len(removals)
         cur.execute("""update sync_runs set inserted=%s, updated=%s, unchanged=%s, removed=%s, flagged=%s,
                            finished_at=now(), status='done' where id=%s""",
                     (n_ins, n_upd, plan["unchanged"], n_rem, plan["flagged"], run_id))
@@ -226,7 +225,8 @@ def apply_batch(conn, batch_id, actor, run_type=None, remove_missing=False):
 SEARCH_TEXT_SQL = """
 insert into product_search(product_id, text)
 select p.id, concat_ws(' ', p.part_no, p.description, p.application, p.oem_name, p.oem_raw, p.category, b.name, p.variant_label,
-       (select string_agg(c.ref_part_no, ' ') from cross_refs c where c.product_id = p.id))
+       (select string_agg(c.ref_part_no, ' ') from cross_refs c where c.product_id = p.id),
+       (select string_agg(concat_ws(' ', f.make, f.model, f.variant, f.engine), ' ') from fitments f where f.product_id = p.id))
 from products p join brands b on b.id = p.brand_id %s
 on conflict (product_id) do update set text = excluded.text"""
 
@@ -235,8 +235,9 @@ def refresh_search_text(cur, product_ids=None):
     """Rebuild the search text for the given products (all when None). Products that no longer exist drop out by cascade."""
     if product_ids is None:
         cur.execute(SEARCH_TEXT_SQL % "")
-    elif product_ids:
-        cur.execute(SEARCH_TEXT_SQL % "where p.id = any(%s::uuid[])", ([str(i) for i in product_ids],))
+    else:
+        for part in kids.chunks([str(i) for i in product_ids], 2000):
+            cur.execute(SEARCH_TEXT_SQL % "where p.id = any(%s::uuid[])", (part,))
 
 
 def reindex(conn, batch_id, actor, product_ids):

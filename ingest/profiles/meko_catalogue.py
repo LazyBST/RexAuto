@@ -104,5 +104,4 @@ class MekoCatalogueProfile:
     @staticmethod
     def _save(store, data, ext):
         name = hashlib.sha256(data).hexdigest()[:20] + "." + ext
-        store.put(f"images/meko/{name}", data)
-        return f"/img/meko/{name}"
+        return store.put_image(f"meko/{name}", data)

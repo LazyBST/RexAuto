@@ -26,6 +26,9 @@ def main(argv=None):
     s.add_argument("--force-conflicts", action="store_true"); s.add_argument("--purge-file", action="store_true")
     sub.add_parser("snapshot"); sub.add_parser("reindex")
     sub.add_parser("list")
+    s = sub.add_parser("load-all", help="upload, parse and apply every source in data/config/sources.csv")
+    s.add_argument("--dir", required=True); s.add_argument("--only", help="comma-separated brand slugs or profiles")
+    sub.add_parser("verify", help="post-load checks")
     s = sub.add_parser("serve", help="local search UI + API"); s.add_argument("--port", type=int, default=3000)
     a = p.parse_args(argv)
     actor = _actor(a)
@@ -38,14 +41,10 @@ def main(argv=None):
     with db.connect() as conn:
         if a.cmd == "init-db":
             db.migrate(conn); db.seed_config(conn)
-            db.ensure_brand(conn, "Uno Minda", "uno-minda", owned=True)
-            db.ensure_brand(conn, "Fras-le", "fras-le", owned=True)
-            db.ensure_brand(conn, "Neolite", "neolite", owned=True)
-            db.ensure_brand(conn, "Car International", "car-international", owned=True)
-            db.ensure_brand(conn, "Meko", "meko", owned=True)
-            db.ensure_brand(conn, "Pensol", "pensol", owned=True); conn.commit()
-            from .apply import refresh_search_text
-            refresh_search_text(conn.cursor()); conn.commit()
+            from . import normalize as nz
+            for src in nz.load_csv("sources.csv"):
+                db.ensure_brand(conn, src["brand_name"], src["brand_slug"], owned=True)
+            conn.commit()
             print("ok")
         elif a.cmd == "upload":
             r = parse.upload_batch(conn, a.brand, a.profile, a.file, actor)
@@ -74,6 +73,15 @@ def main(argv=None):
             print(json.dumps(snapshot(conn)))
         elif a.cmd == "reindex":
             print(index.rebuild(conn))
+        elif a.cmd == "load-all":
+            from . import loadall
+            loadall.load_all(conn, a.dir, actor, set(a.only.split(",")) if a.only else None)
+        elif a.cmd == "verify":
+            from . import loadall
+            res = loadall.verify(conn)
+            for name, ok, detail in res:
+                print(("PASS " if ok else "FAIL ") + name + (f"  [{detail}]" if detail else ""))
+            sys.exit(0 if all(ok for _, ok, _ in res) else 1)
         elif a.cmd == "list":
             cur = db.cursor(conn)
             cur.execute("select id, original_filename, uploaded_at, status, rows_extracted, rows_flagged from import_batches order by uploaded_at")

@@ -1,8 +1,7 @@
+# runtime (ingest CLI, web app, admin API)
 pdfplumber
 pymupdf
 psycopg2-binary
 fastapi
 uvicorn
 python-multipart
-pgserver   # dev only: local Postgres without Docker
-pytest

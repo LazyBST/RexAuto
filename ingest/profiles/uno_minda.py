@@ -43,21 +43,31 @@ class UnoMindaProfile:
 
     def redact(self, data):
         """Return the PDF with the trade-discount column physically removed (text deleted, grid lines kept).
-        Fails closed: raises if any character is still found in that column afterwards."""
+        The column's x-range is read once from the table grid, then the whole strip is cleared on every page; a page whose
+        header does not show the column where expected gets its own grid lookup. Fails closed: raises if any text is left."""
         import fitz
         doc = fitz.open(stream=data, filetype="pdf")
+        band = None
+        for page in doc:
+            tabs = page.find_tables().tables
+            geo = next((r.cells[SKIP_COL] for r in tabs[0].rows if len(r.cells) > SKIP_COL and r.cells[SKIP_COL]), None) if tabs else None
+            if geo:
+                band = (geo[0] + 0.2, geo[2] - 0.2)
+                break
+        if band is None:
+            raise RuntimeError("redaction: could not locate the discount column")
         zones = {}
         for i, page in enumerate(doc):
-            tabs = page.find_tables().tables
-            if not tabs:
-                continue
-            geo = next((r.cells[SKIP_COL] for r in tabs[0].rows if len(r.cells) > SKIP_COL and r.cells[SKIP_COL]), None)
-            if geo:
-                b = tabs[0].bbox
-                zones[i] = fitz.Rect(geo[0] + 0.2, b[1] - 1, geo[2] - 0.2, b[3] + 1)
-        for i, rect in zones.items():
-            doc[i].add_redact_annot(rect, fill=False)
-            doc[i].apply_redactions(images=0, graphics=0, text=0)
+            rect = fitz.Rect(band[0], 40, band[1], page.rect.height - 15)
+            if not any(w[4].upper().startswith("TD") for w in page.get_text("words", clip=rect)):   # header not where expected
+                tabs = page.find_tables().tables
+                geo = next((r.cells[SKIP_COL] for r in tabs[0].rows if len(r.cells) > SKIP_COL and r.cells[SKIP_COL]), None) if tabs else None
+                if not geo:
+                    raise RuntimeError(f"redaction: discount column not found on page {i + 1}")
+                rect = fitz.Rect(geo[0] + 0.2, 40, geo[2] - 0.2, page.rect.height - 15)
+            zones[i] = rect
+            page.add_redact_annot(rect, fill=False)
+            page.apply_redactions(images=0, graphics=0, text=0)
         out = doc.tobytes(garbage=1, deflate=True)
         check = fitz.open(stream=out, filetype="pdf")
         for i, rect in zones.items():
@@ -74,10 +84,12 @@ class UnoMindaProfile:
 
     def parse(self, pdf_path):
         aliases, cats = self._load_config()
-        rows, pages = [], []
+        rows, pages, eff = [], [], None
         with pdfplumber.open(pdf_path) as pdf:
             for pno, page in enumerate(pdf.pages, start=1):
                 stat = PageStat(page=pno)
+                if pno == 1:
+                    eff = nz.date_after(page.extract_text(), "WEF")
                 pages.append(stat)
                 words = page.extract_words(x_tolerance=1.5, y_tolerance=2)
                 stat.words = len(words)
@@ -86,6 +98,7 @@ class UnoMindaProfile:
                     stat.note = "no usable text layer"
                     continue
                 self._parse_page(page, pno, page.chars, stat, rows, aliases, cats)
+        nz.stamp(rows, eff)
         return ParseResult(rows=rows, pages=pages)
 
     def _parse_page(self, page, pno, chars, stat, rows, aliases, cats):
@@ -209,6 +222,9 @@ class UnoMindaProfile:
         moq = nz.to_number(c["moq"])
 
         desc = c["description"]
+        if not desc and c["application"]:           # the source row has an empty DESCRIPTION cell: show what it is used for
+            desc = c["application"]
+            flags.append("description_from_application")
         clipped = self._looks_clipped(desc)
         if clipped:
             flags.append("clipped_description")
@@ -225,13 +241,15 @@ class UnoMindaProfile:
             "variant_label": "",
             "mrp": mrp,
             "mrp_prev": None,
-            "price_basis": "unknown",
+            "price_basis": nz.price_basis(BRAND_SLUG),
             "gst_pct": gst,
             "hsn": hsn or None,
             "moq": int(moq) if moq is not None else None,
             "pack_qty": None,
             "unit": None,
             "image_url": None,
+            "attributes": {k: v for k, v in {"pgroup": c["pgroup"], "class": c["class"], "product_type": c["ptype"],
+                                              "npd_status": c["npd"]}.items() if v},
             "needs_review": bool(clipped),
             "review_note": "description looks clipped in the source" if clipped else None,
             "source_page": pno,

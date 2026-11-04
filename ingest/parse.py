@@ -10,7 +10,7 @@ from pathlib import Path
 import fitz
 import psycopg2.extras as ex
 
-from . import audit
+from . import audit, canon
 from .db import cursor
 from .profiles import get_profile
 from .profiles.base import HARD_FLAGS
@@ -35,8 +35,11 @@ def upload_batch(conn, brand_slug, profile_name, file_path, actor):
 
     bid = uuid.uuid4()
     stored = f"batches/{bid}/{path.name}"
-    redact = getattr(profile, "redact", None) if os.environ.get("REDACT_ON_UPLOAD") == "1" else None  # opt-in; deferred
-    archived = redact(data) if redact else data  # the unredacted upload is never written anywhere
+    redact = getattr(profile, "redact", None) if os.environ.get("REDACT_ON_UPLOAD", "1") != "0" else None  # on by default
+    try:
+        archived = redact(data) if redact else data  # the unredacted upload is never written anywhere
+    except RuntimeError as e:
+        raise SystemExit(f"upload refused: the file cannot be archived safely ({e})")
     get_storage().put(stored, archived)
     cur.execute("""insert into import_batches(id, brand_id, profile, parser_version, original_filename, stored_path,
                        file_sha256, file_size_bytes, page_count, uploaded_by, stored_sha256, redacted)
@@ -69,6 +72,7 @@ def parse_batch(conn, batch_id, actor, parse_fn=None):
     try:
         local = get_storage().local_path(b["stored_path"])
         result = (parse_fn or profile.parse)(str(local))
+        canon.apply(result.rows)
         findings = validate(result.rows, result.pages)
     except Exception as e:
         conn.rollback()

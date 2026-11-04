@@ -3,7 +3,7 @@ import json
 
 from .db import cursor
 
-TABLES = ["brands", "products", "vehicles", "fitments", "cross_refs"]
+TABLES = ["brands", "products", "cross_refs", "product_images", "fitments"]
 
 
 def snapshot(conn):

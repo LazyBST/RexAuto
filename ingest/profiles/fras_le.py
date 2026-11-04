@@ -34,6 +34,7 @@ class FrasLeProfile:
         state = {"group": None, "app": "", "n": 0, "groups_seen": []}
         with pdfplumber.open(pdf_path) as pdf:
             hsn = self._hsn(pdf)
+            eff = nz.date_after(pdf.pages[0].extract_text(), "w.e.f")
             for pno, page in enumerate(pdf.pages, start=1):
                 stat = PageStat(page=pno, words=len(page.extract_words()))
                 pages.append(stat)
@@ -41,6 +42,7 @@ class FrasLeProfile:
                     stat.needs_ocr, stat.note = True, "no usable text layer"
                     continue
                 self._page(page, pno, stat, rows, aliases, state, hsn)
+        nz.stamp(rows, eff)
         seen = state["groups_seen"]
         if seen and seen != list(range(seen[0], seen[0] + len(seen))):
             pages[0].note = (pages[0].note + "; " if pages[0].note else "") + f"group numbers not consecutive: {seen}"
@@ -140,6 +142,7 @@ class FrasLeProfile:
             "segment": seg, "oem_name": oem_name, "oem_raw": oem_raw or None, "application": st["app"] or None,
             "variant_label": variant, "mrp": mrp, "mrp_prev": None, "price_basis": "ex_tax", "gst_pct": None,
             "hsn": hsn, "moq": None, "pack_qty": int(pack) if pack else None, "unit": "set", "image_url": None,
+            "attributes": {k: v for k, v in {"group_no": st["group"], "position": t["fr"], "pcs_per_set": int(pcs) if pcs else None}.items() if v},
             "needs_review": False, "review_note": None, "source_page": pno, "source_row": st["n"],
         }
         return ParsedRow(page=pno, row_no=st["n"], data=data, flags=flags)

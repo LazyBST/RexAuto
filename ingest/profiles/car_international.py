@@ -44,8 +44,9 @@ class CarInternationalProfile:
         for r in nz.load_csv("vehicle_keywords.csv"):
             kws.append((re.compile(r"(?<![A-Z0-9])" + re.escape(r["keyword"].upper()) + r"(?![A-Z0-9])"), r["keyword"].upper(),
                         r["make"], r["segment"]))
-        rows, pages = [], []
+        rows, pages, eff = [], [], None
         with pdfplumber.open(pdf_path) as pdf:
+            eff = nz.find_date(" ".join((pdf.pages[0].extract_text() or "").splitlines()[:3]))
             for pno, page in enumerate(pdf.pages, start=1):
                 stat = PageStat(page=pno, words=len(page.extract_words()))
                 pages.append(stat)
@@ -54,6 +55,7 @@ class CarInternationalProfile:
                     continue
                 self._page(page, pno, stat, rows, kws)
         self._label_repeats(rows)
+        nz.stamp(rows, eff)
         return ParseResult(rows=rows, pages=pages)
 
     @staticmethod
@@ -143,7 +145,7 @@ class CarInternationalProfile:
             "part_no": part, "part_no_norm": nz.norm_part(part), "description": desc or None,
             "category": self._category(desc), "segment": segment, "oem_name": " / ".join(makes) or None,
             "oem_raw": None, "application": ", ".join(models) or None, "variant_label": "", "mrp": mrp, "mrp_prev": None,
-            "price_basis": "unknown", "gst_pct": gst, "hsn": hsn, "moq": None, "pack_qty": None,
+            "price_basis": nz.price_basis(BRAND_SLUG), "gst_pct": gst, "hsn": hsn, "moq": None, "pack_qty": None,
             "unit": unit.lower() or None, "image_url": None, "needs_review": False, "review_note": None,
             "source_page": pno, "source_row": n,
         }

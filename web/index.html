@@ -166,10 +166,12 @@ function render() {
         <span><button class="btn" id="fbtn">Filters</button>
         <span class="seg"><button data-view="list" class="${st.view==="list"?"on":""}">Cards</button><button data-view="compact" class="${st.view==="compact"?"on":""}">Compact</button></span></span>
       </div>
+      ${d && d.corrected_from ? `<p class="hint">Showing results for <b>${esc(d.query)}</b> (you typed “${esc(d.corrected_from)}”)</p>` : ""}
       ${chips ? `<div class="active">${chips}</div>` : ""}
       <div class="list ${st.view==="compact"?"compact":""}">${!d ? '<div class="skeleton"></div>'.repeat(4) : d.hits.map(card).join("")}</div>
       ${d && !d.hits.length ? `<div class="empty"><p><b>No results.</b></p><p>Try the part number or the vehicle name, or <a href="${wa("Hi, I could not find: " + st.q)}" target="_blank" rel="noopener">ask us on WhatsApp</a>.</p></div>` : ""}
-      ${d && d.hits.length < d.total ? `<button class="btn more" id="more">Show more (${d.total - d.hits.length} left)</button>` : ""}
+      ${d && d.hits.length < d.total && d.hits.length < 300 ? `<button class="btn more" id="more">Show more (${d.total - d.hits.length} left)</button>` : ""}
+      ${d && d.hits.length < d.total && d.hits.length >= 300 ? `<p class="hint" style="text-align:center">Showing the first 300 of ${d.total.toLocaleString("en-IN")}. Narrow the search with a make, category or part number.</p>` : ""}
     </section>
   </div>`;
 }
@@ -212,6 +214,7 @@ async function openProduct(id) {
   const row = (k, v) => v == null || v === "" ? "" : `<dt>${k}</dt><dd>${esc(v)}</dd>`;
   $("#dlg").innerHTML = `<div class="dlg"><button class="close" data-close aria-label="Close">×</button>
     <div class="meta"><span class="brand">${esc(p.brand)}</span> · ${esc(p.category||"")}</div>
+    ${(p.images||[]).length ? `<div style="display:flex;gap:8px;overflow:auto;margin:10px 0">${p.images.map(i => `<img src="${esc(i.url)}" alt="" style="height:160px;border-radius:10px">`).join("")}</div>` : ""}
     <h1>${esc(p.description||p.part_no)}</h1>
     <div><button class="pn" data-copy="${esc(p.part_no)}">${esc(p.part_no)}</button> ${p.variant_label?`<span class="tag">${esc(p.variant_label)}</span>`:""}</div>
     <dl class="kv">

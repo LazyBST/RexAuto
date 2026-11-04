@@ -12,7 +12,7 @@ import statistics
 import fitz
 
 from .. import normalize as nz
-from ..ocr import ocr_page
+from ..ocr import ocr_page, ocr_tiled
 from .base import PageStat, ParsedRow, ParseResult
 
 NAME = "pensol"
@@ -34,6 +34,58 @@ SECTIONS = {
     "APLR SERIES GREASES": ("Greases", "OTHER"), "OTHER GREASES": ("Greases", "OTHER"),
     "HYDRAULIC OILS": ("Hydraulic Oils", "OTHER"), "BRAKE FLUIDS": ("Brake Fluids", "OTHER"), "COOLANTS": ("Coolants", "OTHER"),
 }
+
+
+def rate_bands(words):
+    """x-ranges of the two RATE (dealer rate) columns, located from the PACKING headers; [] if the page has no two headers."""
+    heads = sorted((w["x"] for w in words if w["t"] == "PACKING"))
+    return [(p + 150, p + 280) for p in heads] if len(heads) == 2 else []
+
+
+def drop_rate_column(words):
+    """Remove every word inside a RATE column. Applied inside the OCR layer, before the result is cached."""
+    bands = rate_bands(words)
+    return [w for w in words if not any(lo <= w["x"] + w["w"] / 2 < hi for lo, hi in bands)]
+
+
+def redact_scan(data, dpi=250):
+    """Blank the dealer RATE column in the scanned pages themselves: the pixels of that strip are cleared in the page image
+    and the image is stored again at its original resolution, so the archived original no longer contains the column.
+    Fails closed: each page is re-read with OCR and must show no number in a RATE band."""
+    import fitz
+    from ..ocr import ocr_png, render
+    doc = fitz.open(stream=data, filetype="pdf")
+    k = 72 / dpi
+    bands = {}
+    for i, page in enumerate(doc):
+        words = ocr_tiled(page, dpi, drop=drop_rate_column, tag="no-rate")           # cached WITHOUT the rate words
+        heads = sorted(w["x"] for w in words if w["t"] == "PACKING")
+        if len(heads) != 2:
+            raise RuntimeError(f"redaction: page {i + 1} does not show two PACKING headers")
+        top = min(w["y"] for w in words if w["t"] == "PACKING") - 15
+        bands[i] = [fitz.Rect((p + 150) * k, top * k, (p + 280) * k, page.rect.height - 5) for p in heads]
+        infos = [x for x in page.get_image_info(xrefs=True) if x.get("xref")]
+        if len(infos) != 1:
+            raise RuntimeError(f"redaction: page {i + 1} has {len(infos)} images, expected one scan")
+        info = infos[0]
+        pix = fitz.Pixmap(doc, info["xref"])
+        if pix.alpha or pix.n not in (1, 3):
+            pix = fitz.Pixmap(fitz.csRGB, pix)
+        bx0, by0, bx1, by1 = info["bbox"]
+        sx, sy = pix.width / (bx1 - bx0), pix.height / (by1 - by0)
+        for r in bands[i]:
+            pix.set_rect(fitz.IRect(int((r.x0 - bx0) * sx), int((r.y0 - by0) * sy), int((r.x1 - bx0) * sx), int((r.y1 - by0) * sy)),
+                         (255,) * pix.n)
+        page.replace_image(info["xref"], pixmap=pix)
+    out = doc.tobytes(garbage=1, deflate=True)
+    check = fitz.open(stream=out, filetype="pdf")
+    for i, page in enumerate(check):
+        words = ocr_tiled(page, dpi, cache=False)                                      # never cached: it is a check
+        left = [w for w in words if any(r.x0 / k <= w["x"] + w["w"] / 2 < r.x1 / k and w["y"] > r.y0 / k + 40 for r in bands[i])
+                and any(ch.isdigit() for ch in w["t"])]
+        if left:
+            raise RuntimeError(f"redaction failed on page {i + 1}: {len(left)} numbers remain in the RATE column")
+    return out
 
 
 def _lines(words, tol=ROW_TOL):
@@ -79,19 +131,25 @@ class PensolProfile:
     brand_slug = BRAND_SLUG
     parser_version = PARSER_VERSION
 
+    def redact(self, data):
+        return redact_scan(data)
+
     def parse(self, pdf_path):
         n_pages = len(fitz.open(pdf_path))
-        rows, pages, carry = [], [], {}
+        rows, pages, carry, eff = [], [], {}, None
         for pno in range(1, n_pages + 1):
             stat = PageStat(page=pno)
             pages.append(stat)
-            words, _ = ocr_page(pdf_path, pno - 1)
+            words, _ = ocr_page(pdf_path, pno - 1, drop=drop_rate_column, tag="no-rate", tiled=True)
             stat.words = len(words)
             if len(words) < 30:
                 stat.needs_ocr, stat.note = True, "nothing recognised even with OCR"
                 continue
+            if pno == 1:
+                eff = nz.find_date(" ".join(w["t"] for w in words))
             self._page(words, pno, stat, rows, carry)
         self._price_check(rows)
+        nz.stamp(rows, eff)
         return ParseResult(rows=rows, pages=pages)
 
     def _page(self, words, pno, stat, rows, carry):
@@ -154,6 +212,11 @@ class PensolProfile:
                     cur["rows"].append(row)
                     if cur["first_cy"] is None:
                         cur["first_cy"] = ey
+        for g in groups:  # the spec lines (SAE grade, API class) belong to every pack of the product, not only the later ones
+            full = nz.clean_text(g["name"] + " " + " ".join(g["specs"]))
+            for r in g["rows"]:
+                r.data["description"] = full
+                r.data["attributes"] = {"section": g["section"][0], "pack_raw": r.data["variant_label"]}
         for g in groups:  # a name far from its first pack line is an uncertain match: say so
             if g["first_cy"] is not None and abs(g["first_cy"] - g["name_cy"]) > ALIGN_TOL:
                 for r in g["rows"]:
