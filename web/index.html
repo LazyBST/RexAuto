@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parts Catalogue</title>
+<style>
+:root{
+  --bg:#f6f7f9; --card:#fff; --ink:#14181f; --mute:#5b6572; --line:#e3e7ec; --brand:#0b5fff; --brand-ink:#fff;
+  --chip:#eef2ff; --ok:#0a7d3c; --warn:#a15c00; --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.08);
+}
+@media (prefers-color-scheme:dark){
+  :root{--bg:#0e1116; --card:#171b22; --ink:#eef1f5; --mute:#9aa4b2; --line:#272d37; --brand:#5b8cff; --brand-ink:#0b1020; --chip:#1d2540; --ok:#4cc38a; --warn:#e0a24a; --shadow:none}
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+button,input,select{font:inherit;color:inherit}
+header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:12px 16px}
+.bar{max-width:1100px;margin:0 auto;display:flex;gap:10px;align-items:center}
+.logo{font-weight:700;letter-spacing:-.01em;white-space:nowrap;cursor:pointer}
+.search{flex:1;position:relative}
+.search input{width:100%;height:46px;border:1px solid var(--line);border-radius:12px;padding:0 44px 0 14px;background:var(--card);font-size:16px;outline:none}
+.search input:focus{border-color:var(--brand);box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 22%,transparent)}
+.search .x{position:absolute;right:6px;top:5px;width:36px;height:36px;border:0;background:none;color:var(--mute);font-size:22px;cursor:pointer;display:none}
+main{max-width:1100px;margin:0 auto;padding:16px}
+.hint{color:var(--mute);margin:4px 0 16px}
+h2{font-size:14px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute);margin:24px 0 10px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.tile{display:flex;justify-content:space-between;align-items:center;gap:8px;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-height:52px;cursor:pointer;box-shadow:var(--shadow)}
+.tile:hover{border-color:var(--brand)}
+.tile small{color:var(--mute)}
+.examples{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.chipbtn{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:8px 14px;cursor:pointer;min-height:40px}
+.layout{display:grid;grid-template-columns:240px 1fr;gap:20px}
+@media (max-width:820px){.layout{grid-template-columns:1fr}.filters{display:none}.filters.open{display:block}}
+.filters{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 14px;align-self:start}
+.filters h3{margin:12px 0 6px;font-size:13px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em}
+.filters h3:first-child{margin-top:0}
+.opt{display:flex;justify-content:space-between;gap:8px;width:100%;text-align:left;background:none;border:0;padding:7px 4px;border-radius:8px;cursor:pointer;min-height:36px}
+.opt:hover{background:var(--chip)}
+.opt.on{background:var(--chip);font-weight:600;color:var(--brand)}
+.opt span:last-child{color:var(--mute);font-variant-numeric:tabular-nums}
+.price{display:flex;gap:6px;align-items:center}
+.price input{width:100%;height:38px;border:1px solid var(--line);border-radius:8px;padding:0 8px;background:var(--bg)}
+.toolbar{display:flex;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap}
+.count{color:var(--mute)}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;background:var(--card);padding:8px 12px;cursor:pointer;min-height:40px}
+.seg button.on{background:var(--brand);color:var(--brand-ink)}
+#fbtn{display:none}
+@media (max-width:820px){#fbtn{display:inline-block}}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:8px 14px;cursor:pointer;min-height:40px}
+.btn.primary{background:var(--brand);color:var(--brand-ink);border-color:var(--brand);font-weight:600}
+.active{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.active .chipbtn{padding:4px 10px;min-height:32px;background:var(--chip);border-color:transparent;font-size:14px}
+.list{display:grid;gap:10px}
+.card{display:grid;grid-template-columns:84px 1fr auto;gap:14px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;box-shadow:var(--shadow);cursor:pointer}
+.card:hover{border-color:var(--brand)}
+.ph{width:84px;height:84px;border-radius:10px;background:var(--chip);display:grid;place-items:center;color:var(--mute);font-size:11px;text-align:center;overflow:hidden}
+.ph img{width:100%;height:100%;object-fit:cover}
+.meta{font-size:13px;color:var(--mute)}
+.brand{font-weight:600;color:var(--ink)}
+.pn{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-weight:600;font-size:15px;background:var(--chip);border:0;border-radius:6px;padding:2px 8px;cursor:copy}
+.title{font-weight:600;margin:3px 0}
+.used{font-size:14px;color:var(--mute);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.side{text-align:right;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-end;gap:8px;min-width:96px}
+.mrp{font-weight:700;font-size:18px;font-variant-numeric:tabular-nums}
+.mrp small{display:block;font-weight:400;font-size:12px;color:var(--mute)}
+.ask{font-size:13px;color:var(--ok);text-decoration:none;border:1px solid var(--ok);border-radius:8px;padding:6px 10px;white-space:nowrap}
+.tag{display:inline-block;font-size:12px;border-radius:999px;padding:1px 8px;background:var(--chip);color:var(--mute);margin-right:4px}
+.compact .card{grid-template-columns:1fr auto;padding:8px 12px;gap:10px}
+.compact .ph,.compact .used{display:none}
+.compact .title{margin:0;font-weight:500;font-size:15px}
+.compact .side{flex-direction:row;align-items:center;gap:12px}
+.compact .ask{display:none}
+.empty{text-align:center;color:var(--mute);padding:48px 12px}
+.empty a{color:var(--brand)}
+.more{display:block;margin:18px auto}
+.skeleton{height:110px;border-radius:12px;background:linear-gradient(90deg,var(--card),var(--chip),var(--card));background-size:200% 100%;animation:sh 1.2s infinite}
+@keyframes sh{to{background-position:-200% 0}}
+@media (max-width:520px){.card{grid-template-columns:64px 1fr}.ph{width:64px;height:64px}.side{grid-column:1/-1;flex-direction:row;align-items:center;justify-content:space-between;text-align:left}}
+dialog{border:0;border-radius:16px;padding:0;max-width:640px;width:calc(100% - 24px);background:var(--card);color:var(--ink);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog::backdrop{background:rgba(10,14,20,.55)}
+.dlg{padding:20px;max-height:86vh;overflow:auto}
+.dlg h1{font-size:20px;margin:6px 0 2px}
+.kv{display:grid;grid-template-columns:130px 1fr;gap:6px 12px;margin:14px 0;font-size:15px}
+.kv dt{color:var(--mute)}.kv dd{margin:0}
+.close{float:right;border:0;background:none;font-size:28px;color:var(--mute);cursor:pointer;line-height:1}
+.rel{display:grid;gap:6px;margin-top:6px}
+.rel button{text-align:left;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:8px 10px;cursor:pointer}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:999px;opacity:0;transition:.2s;pointer-events:none}
+.toast.on{opacity:1}
+</style>
+</head>
+<body>
+<header><div class="bar">
+  <div class="logo" id="logo">Parts Catalogue</div>
+  <div class="search"><input id="q" type="search" inputmode="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Part number, or vehicle + part (e.g. tata 1612 brake valve)"><button class="x" id="clear" aria-label="Clear">×</button></div>
+</div></header>
+<main id="main"></main>
+<div class="toast" id="toast"></div>
+<dialog id="dlg"></dialog>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const inr = n => n == null ? null : "₹" + Number(n).toLocaleString("en-IN", {maximumFractionDigits: 2});
+const PAGE = 30;
+let cfg = {name: "Parts Catalogue", whatsapp: ""};
+let st = {q: "", f: {}, offset: 0, view: localStorage.getItem("view") || "list", data: null, loading: false};
+let timer, reqId = 0;
+
+function readUrl() {
+  const u = new URLSearchParams(location.search);
+  st.q = u.get("q") || "";
+  st.f = {};
+  for (const k of ["brand","make","segment","category","min_price","max_price"]) if (u.get(k)) st.f[k] = u.get(k);
+  $("#q").value = st.q;
+}
+function writeUrl() {
+  const u = new URLSearchParams();
+  if (st.q) u.set("q", st.q);
+  for (const [k,v] of Object.entries(st.f)) if (v) u.set(k, v);
+  history.replaceState(null, "", u.toString() ? "?" + u : location.pathname + location.hash);
+}
+const hasQuery = () => st.q.trim() || Object.values(st.f).some(Boolean);
+
+async function run(append = false) {
+  const id = ++reqId;
+  st.loading = true;
+  if (!append) { st.offset = 0; render(); }
+  const p = new URLSearchParams({q: st.q, limit: PAGE, offset: st.offset, ...st.f});
+  let d;
+  try { d = await (await fetch("/api/search?" + p)).json(); }
+  catch (e) { return; }
+  if (id !== reqId) return;
+  st.loading = false;
+  if (append && st.data) { d.hits = st.data.hits.concat(d.hits); }
+  st.data = d;
+  render();
+}
+
+function render() {
+  writeUrl();
+  $("#clear").style.display = st.q ? "block" : "none";
+  const m = $("#main");
+  if (!hasQuery()) { renderHome(m); return; }
+  const d = st.data;
+  const facets = d ? d.facets : {};
+  const opt = (key, rows) => (rows||[]).map(r => `<button class="opt ${st.f[key]===r.value?"on":""}" data-f="${key}" data-v="${esc(r.value)}"><span>${esc(r.label)}</span><span>${r.n}</span></button>`).join("");
+  const chips = Object.entries(st.f).filter(([,v]) => v).map(([k,v]) => `<button class="chipbtn" data-rm="${k}">${esc(({min_price:"from ₹",max_price:"up to ₹"})[k]||"")}${esc(v)} ×</button>`).join("");
+  m.innerHTML = `
+  <div class="layout">
+    <aside class="filters" id="filters">
+      <h3>Brand</h3>${opt("brand", facets.brand)}
+      <h3>Vehicle make</h3>${opt("make", facets.make)}
+      <h3>Segment</h3>${opt("segment", facets.segment)}
+      <h3>Category</h3>${opt("category", facets.category)}
+      <h3>MRP (₹)</h3>
+      <div class="price"><input id="pmin" inputmode="numeric" placeholder="min" value="${esc(st.f.min_price||"")}"><span>–</span><input id="pmax" inputmode="numeric" placeholder="max" value="${esc(st.f.max_price||"")}"></div>
+    </aside>
+    <section>
+      <div class="toolbar">
+        <span class="count">${d ? `${d.total.toLocaleString("en-IN")} result${d.total===1?"":"s"} <small>· ${d.ms} ms</small>` : "Searching…"}</span>
+        <span><button class="btn" id="fbtn">Filters</button>
+        <span class="seg"><button data-view="list" class="${st.view==="list"?"on":""}">Cards</button><button data-view="compact" class="${st.view==="compact"?"on":""}">Compact</button></span></span>
+      </div>
+      ${chips ? `<div class="active">${chips}</div>` : ""}
+      <div class="list ${st.view==="compact"?"compact":""}">${!d ? '<div class="skeleton"></div>'.repeat(4) : d.hits.map(card).join("")}</div>
+      ${d && !d.hits.length ? `<div class="empty"><p><b>No results.</b></p><p>Try the part number or the vehicle name, or <a href="${wa("Hi, I could not find: " + st.q)}" target="_blank" rel="noopener">ask us on WhatsApp</a>.</p></div>` : ""}
+      ${d && d.hits.length < d.total ? `<button class="btn more" id="more">Show more (${d.total - d.hits.length} left)</button>` : ""}
+    </section>
+  </div>`;
+}
+
+function card(h) {
+  const price = h.mrp != null ? `<div class="mrp">${inr(h.mrp)}<small>MRP${h.price_basis==="ex_tax"?" (excl. GST)":h.price_basis==="incl_tax"?" (incl. GST)":""}</small></div>` : `<div class="mrp"><small>Price on request</small></div>`;
+  return `<article class="card" data-id="${h.id}">
+    <div class="ph">${h.image_url ? `<img loading="lazy" src="${esc(h.image_url)}" alt="">` : "No image"}</div>
+    <div>
+      <div class="meta"><span class="brand">${esc(h.brand)}</span> · ${esc(h.category||"")}</div>
+      <div class="title">${esc(h.description||h.part_no)}</div>
+      <div><button class="pn" data-copy="${esc(h.part_no)}" title="Tap to copy">${esc(h.part_no)}</button>
+        ${h.variant_label ? `<span class="tag">${esc(h.variant_label)}</span>` : ""}${h.oem_name ? `<span class="tag">${esc(h.oem_name)}</span>` : ""}</div>
+      ${h.application ? `<div class="used">Used for: ${esc(h.application)}</div>` : ""}
+    </div>
+    <div class="side">${price}<a class="ask" href="${wa(`Hi, is this available?\n${h.brand} ${h.part_no}${h.variant_label?" ("+h.variant_label+")":""}\n${location.origin}/#p=${h.id}`)}" target="_blank" rel="noopener">Ask availability</a></div>
+  </article>`;
+}
+
+async function renderHome(m) {
+  const d = await (await fetch("/api/search?limit=1")).json();
+  if (hasQuery()) return;
+  const tiles = (key, rows) => rows.map(r => `<button class="tile" data-f="${key}" data-v="${esc(r.value)}"><span>${esc(r.label)}</span><small>${r.n.toLocaleString("en-IN")}</small></button>`).join("");
+  m.innerHTML = `
+    <p class="hint">${d.total.toLocaleString("en-IN")} parts · search by part number, or by vehicle and part.</p>
+    <div class="examples">${["tata brake valve","head lamp swift","MB04015028","oil filter","brake lining ashok leyland","clutch"].map(x=>`<button class="chipbtn" data-q="${esc(x)}">${esc(x)}</button>`).join("")}</div>
+    <h2>Browse by vehicle make</h2><div class="tiles">${tiles("make", d.facets.make)}</div>
+    <h2>Browse by category</h2><div class="tiles">${tiles("category", d.facets.category)}</div>
+    <h2>Browse by brand</h2><div class="tiles">${tiles("brand", d.facets.brand)}</div>`;
+}
+
+const wa = text => `https://wa.me/${cfg.whatsapp}?text=${encodeURIComponent(text)}`;
+function toast(t) { const e = $("#toast"); e.textContent = t; e.classList.add("on"); setTimeout(() => e.classList.remove("on"), 1400); }
+
+async function openProduct(id) {
+  const r = await fetch("/api/product/" + id);
+  if (!r.ok) return;
+  const p = await r.json();
+  const rel = (title, rows) => rows.length ? `<h2>${title}</h2><div class="rel">${rows.map(x => `<button data-open="${x.id}"><b>${esc(x.brand)}</b> ${esc(x.part_no)} ${x.variant_label?`(${esc(x.variant_label)})`:""} — ${esc(x.description||"")} ${x.mrp!=null?"· "+inr(x.mrp):""}</button>`).join("")}</div>` : "";
+  const row = (k, v) => v == null || v === "" ? "" : `<dt>${k}</dt><dd>${esc(v)}</dd>`;
+  $("#dlg").innerHTML = `<div class="dlg"><button class="close" data-close aria-label="Close">×</button>
+    <div class="meta"><span class="brand">${esc(p.brand)}</span> · ${esc(p.category||"")}</div>
+    <h1>${esc(p.description||p.part_no)}</h1>
+    <div><button class="pn" data-copy="${esc(p.part_no)}">${esc(p.part_no)}</button> ${p.variant_label?`<span class="tag">${esc(p.variant_label)}</span>`:""}</div>
+    <dl class="kv">
+      ${row("MRP", p.mrp != null ? inr(p.mrp) + (p.price_basis==="ex_tax"?" (excl. GST)":p.price_basis==="incl_tax"?" (incl. GST)":"") : "Price on request")}
+      ${row("Used for", p.application)}${row("Vehicle make", p.oem_name)}${row("OEM code (as printed)", p.oem_raw)}
+      ${row("Segment", p.segment)}${row("HSN", p.hsn)}${row("GST", p.gst_pct != null ? p.gst_pct + "%" : null)}
+      ${row("Min. order qty", p.moq)}${row("Pack", p.pack_qty ? p.pack_qty + " " + (p.unit||"") : null)}
+      ${row("Availability", "Ask us — most items are in stock or available within ~7 days")}
+    </dl>
+    <p><a class="btn primary" style="text-decoration:none;display:inline-block" href="${wa(`Hi, is this available?\n${p.brand} ${p.part_no}${p.variant_label?" ("+p.variant_label+")":""}\n${location.origin}/#p=${p.id}`)}" target="_blank" rel="noopener">Ask availability on WhatsApp</a></p>
+    ${rel("Other sizes / variants", p.variants)}${rel("Same part number, other brands", p.same_number_elsewhere)}${rel("Related parts", p.related)}</div>`;
+  if (!$("#dlg").open) $("#dlg").showModal();
+  history.replaceState(null, "", location.search + "#p=" + id);
+}
+
+document.addEventListener("click", e => {
+  const t = e.target;
+  const copy = t.closest("[data-copy]");
+  if (copy) { e.stopPropagation(); navigator.clipboard?.writeText(copy.dataset.copy); toast("Copied " + copy.dataset.copy); return; }
+  if (t.closest(".ask")) return;
+  const op = t.closest("[data-open]"); if (op) { openProduct(op.dataset.open); return; }
+  if (t.closest("[data-close]") || t === $("#dlg")) { $("#dlg").close(); return; }
+  const c = t.closest(".card"); if (c) { openProduct(c.dataset.id); return; }
+  const f = t.closest("[data-f]");
+  if (f) { const {f: k, v} = f.dataset; st.f[k] = st.f[k] === v ? "" : v; run(); window.scrollTo({top: 0}); return; }
+  const rm = t.closest("[data-rm]"); if (rm) { st.f[rm.dataset.rm] = ""; run(); return; }
+  const q = t.closest("[data-q]"); if (q) { st.q = q.dataset.q; $("#q").value = st.q; run(); return; }
+  const v = t.closest("[data-view]"); if (v) { st.view = v.dataset.view; localStorage.setItem("view", st.view); render(); return; }
+  if (t.id === "more") { st.offset += PAGE; run(true); return; }
+  if (t.id === "fbtn") { $("#filters").classList.toggle("open"); return; }
+});
+$("#dlg").addEventListener("close", () => history.replaceState(null, "", location.search));
+$("#q").addEventListener("input", e => { st.q = e.target.value; clearTimeout(timer); timer = setTimeout(() => hasQuery() ? run() : render(), 180); });
+$("#clear").addEventListener("click", () => { st.q = ""; $("#q").value = ""; $("#q").focus(); hasQuery() ? run() : render(); });
+$("#logo").addEventListener("click", () => { st.q = ""; st.f = {}; $("#q").value = ""; render(); });
+document.addEventListener("change", e => {
+  if (e.target.id === "pmin" || e.target.id === "pmax") { st.f.min_price = $("#pmin").value; st.f.max_price = $("#pmax").value; run(); }
+});
+
+(async () => {
+  try { cfg = await (await fetch("/api/config")).json(); $(".logo").textContent = cfg.name; document.title = cfg.name; } catch (e) {}
+  const m = location.hash.match(/^#p=([0-9a-f-]{36})$/);
+  readUrl();
+  if (matchMedia("(pointer:fine)").matches) $("#q").focus();
+  hasQuery() ? run() : render();
+  if (m) openProduct(m[1]);
+})();
+</script>
+</body>
+</html>

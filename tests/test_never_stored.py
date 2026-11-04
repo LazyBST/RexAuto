@@ -66,3 +66,21 @@ def test_staging_index_csv_and_audit_clean(conn, small_pdf, cached_parse):
     cur.execute("select id from products")
     docs = index.documents(conn, [r[0] for r in cur.fetchall()])
     assert docs and not [k for d in docs for k in d if bad_name(k)]
+
+
+def test_archived_copy_is_redacted_and_parses_identically(conn, small_pdf, parsed_small, monkeypatch):
+    monkeypatch.setenv("REDACT_ON_UPLOAD", "1")
+    import pdfplumber
+    from ingest.storage import get_storage
+    b = parse.upload_batch(conn, "uno-minda", "uno_minda", small_pdf, "t")["batch_id"]
+    cur = conn.cursor()
+    cur.execute("select stored_path, redacted, stored_sha256, file_sha256 from import_batches where id=%s", (b,))
+    path, redacted, stored_sha, up_sha = cur.fetchone()
+    assert redacted and stored_sha != up_sha
+    archived = get_storage().local_path(path)
+    with pdfplumber.open(archived) as pdf:
+        for page in pdf.pages:
+            text = " ".join(c["text"] for c in page.chars if 503 <= (c["x0"] + c["x1"]) / 2 <= 529)
+            assert "%" not in text and "TD" not in text
+    again = uno_minda.UnoMindaProfile().parse(str(archived))
+    assert [(r.data, r.flags) for r in again.rows] == [(r.data, r.flags) for r in parsed_small.rows]

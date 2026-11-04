@@ -1,6 +1,6 @@
-from . import uno_minda
+from . import fras_le, uno_minda
 
-PROFILES = {"uno_minda": uno_minda.UnoMindaProfile()}
+PROFILES = {"uno_minda": uno_minda.UnoMindaProfile(), "fras_le": fras_le.FrasLeProfile()}
 
 
 def get_profile(name):

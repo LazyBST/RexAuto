@@ -1,5 +1,6 @@
 """upload -> parse -> stage. Nothing here touches `products`."""
 import hashlib
+import os
 import json
 import time
 import uuid
@@ -34,12 +35,15 @@ def upload_batch(conn, brand_slug, profile_name, file_path, actor):
 
     bid = uuid.uuid4()
     stored = f"batches/{bid}/{path.name}"
-    get_storage().put(stored, data)
+    redact = getattr(profile, "redact", None) if os.environ.get("REDACT_ON_UPLOAD") == "1" else None  # opt-in; deferred
+    archived = redact(data) if redact else data  # the unredacted upload is never written anywhere
+    get_storage().put(stored, archived)
     cur.execute("""insert into import_batches(id, brand_id, profile, parser_version, original_filename, stored_path,
-                       file_sha256, file_size_bytes, page_count, uploaded_by)
-                   values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                (bid, brand["id"], profile_name, profile.parser_version, path.name, stored, sha, len(data), pages, actor))
-    audit.log(cur, actor, "file_uploaded", bid, filename=path.name, sha256=sha, size=len(data), pages=pages, stored=stored)
+                       file_sha256, file_size_bytes, page_count, uploaded_by, stored_sha256, redacted)
+                   values (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (bid, brand["id"], profile_name, profile.parser_version, path.name, stored, sha, len(archived), pages, actor,
+                 hashlib.sha256(archived).hexdigest(), bool(redact)))
+    audit.log(cur, actor, "file_uploaded", bid, filename=path.name, sha256=sha, size=len(archived), pages=pages, stored=stored, redacted=bool(redact))
     cur.execute("select id, original_filename, uploaded_at, status from import_batches where file_sha256 = %s and id <> %s",
                 (sha, bid))
     dups = cur.fetchall()

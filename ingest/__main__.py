@@ -26,13 +26,20 @@ def main(argv=None):
     s.add_argument("--force-conflicts", action="store_true"); s.add_argument("--purge-file", action="store_true")
     sub.add_parser("snapshot"); sub.add_parser("reindex")
     sub.add_parser("list")
+    s = sub.add_parser("serve", help="local search UI + API"); s.add_argument("--port", type=int, default=3000)
     a = p.parse_args(argv)
     actor = _actor(a)
+    if a.cmd == "serve":
+        import uvicorn
+        print(f"Open http://localhost:{a.port}")
+        uvicorn.run("ingest.web:app", host="127.0.0.1", port=a.port, log_level="warning")
+        return
 
     with db.connect() as conn:
         if a.cmd == "init-db":
             db.migrate(conn); db.seed_config(conn)
-            db.ensure_brand(conn, "Uno Minda", "uno-minda", owned=True); conn.commit()
+            db.ensure_brand(conn, "Uno Minda", "uno-minda", owned=True)
+            db.ensure_brand(conn, "Fras-le", "fras-le", owned=True); conn.commit()
             print("ok")
         elif a.cmd == "upload":
             r = parse.upload_batch(conn, a.brand, a.profile, a.file, actor)

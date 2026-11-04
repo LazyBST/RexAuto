@@ -7,6 +7,7 @@ Table with a text layer and cell borders. Columns, by index:
 The trade-discount column is excluded by whitelist: words that sit in that column's x-range are
 discarded before any row is built, and no code path ever reads their text.
 """
+import io
 import re
 
 import pdfplumber
@@ -38,6 +39,31 @@ class UnoMindaProfile:
 
     def __init__(self):
         self._ctx = None
+
+    def redact(self, data):
+        """Return the PDF with the trade-discount column physically removed (text deleted, grid lines kept).
+        Fails closed: raises if any character is still found in that column afterwards."""
+        import fitz
+        doc = fitz.open(stream=data, filetype="pdf")
+        zones = {}
+        for i, page in enumerate(doc):
+            tabs = page.find_tables().tables
+            if not tabs:
+                continue
+            geo = next((r.cells[SKIP_COL] for r in tabs[0].rows if len(r.cells) > SKIP_COL and r.cells[SKIP_COL]), None)
+            if geo:
+                b = tabs[0].bbox
+                zones[i] = fitz.Rect(geo[0] + 0.2, b[1] - 1, geo[2] - 0.2, b[3] + 1)
+        for i, rect in zones.items():
+            doc[i].add_redact_annot(rect, fill=False)
+            doc[i].apply_redactions(images=0, graphics=0, text=0)
+        out = doc.tobytes(garbage=1, deflate=True)
+        check = fitz.open(stream=out, filetype="pdf")
+        for i, rect in zones.items():
+            left = check[i].get_text("words", clip=rect)
+            if left:
+                raise RuntimeError(f"redaction failed on page {i + 1}: {len(left)} words remain")
+        return out
 
     def _load_config(self):
         aliases = {r["raw"].strip().upper(): r["make"] for r in nz.load_csv("make_aliases.csv")}
