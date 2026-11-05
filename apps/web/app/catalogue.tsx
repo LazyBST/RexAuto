@@ -1,5 +1,6 @@
 "use client";
 
+import VisitorCounter from "./visitor-counter";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type Hit = { id: string; part_no: string; variant_label: string; description: string | null; application: string | null; oem_name: string | null;
@@ -172,6 +173,7 @@ export default function Catalogue() {
           </div>
         )}
       </main>
+      <VisitorCounter />
 
       {open && (
         <div className="backdrop" onClick={close}>
