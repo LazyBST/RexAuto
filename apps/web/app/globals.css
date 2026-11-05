@@ -193,3 +193,41 @@ h2.k-make,h2.k-brand,h2.k-cat,h2.k-seg{color:var(--k)}
 @keyframes flipB{from{transform:rotateX(90deg)}to{transform:rotateX(0)}}
 @media (prefers-reduced-motion:reduce){.fd .flap-t,.fd .flap-b{animation-duration:.01s;animation-delay:0s}}
 @media (max-width:820px){.visits{padding:18px 0 28px}.fd{width:24px;height:36px;font-size:24px;line-height:36px}.fd .h b{height:36px;line-height:36px}}
+
+/* ---- logos (brands, vehicle makes, category icons) ---- */
+.lg{display:inline-flex;align-items:center;gap:6px;vertical-align:middle;max-width:100%}
+.lg img{display:block;box-sizing:content-box;height:22px;width:auto;max-width:76px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px 5px}
+.lg-brands img{height:24px;max-width:88px}
+.lg-categories img{height:18px;width:18px;max-width:18px;padding:3px}
+.lg .mono{font-style:normal;font-weight:700;font-size:11px;min-width:24px;height:22px;box-sizing:border-box;display:inline-grid;place-items:center;border-radius:6px;background:var(--chip);color:var(--mute);padding:0 5px;border:1px solid var(--line)}
+.lg.named img{height:18px;max-width:56px;padding:2px 4px}
+.lg-categories.named img{height:16px;width:16px;max-width:16px;padding:3px}
+.lg.named .mono{height:20px;min-width:22px;font-size:10px}
+.lgname{font:inherit;color:inherit;white-space:nowrap}
+.lgrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.lgrow.wrap{gap:6px 12px}
+.lgrow.big{gap:6px 14px;font-size:14px}
+.lgrow.big .lg img{height:26px;max-width:92px}
+.lgrow.big .lg-categories img{height:20px;width:20px;max-width:20px}
+.segp{font-size:12px;font-weight:700;letter-spacing:.04em;padding:1px 8px;border-radius:999px;background:color-mix(in srgb,var(--k-seg) 10%,transparent)}
+.meta.lgrow{min-height:26px;margin-bottom:2px}
+.ids .lg{margin-left:2px}
+.compact .ids .lg img{height:20px;max-width:60px}
+.compact .ids .lg .mono{height:20px}
+.opt .lg,.tile .lg,.fchip .lg{min-width:0}
+.fchip .lg img{height:18px;max-width:46px}
+.tile .lg img{height:22px;max-width:64px}
+@media (max-width:820px){.lg-brands img{height:22px;max-width:76px}}
+/* tiles/rows with a logo: let the name shrink with an ellipsis so the count never gets pushed out */
+.tile,.opt{min-width:0}
+.tile>span:first-child,.opt>span:first-child{min-width:0;flex:1 1 auto;overflow:hidden}
+.tile>small,.opt>span:last-child{flex:none}
+.lg.named{min-width:0;max-width:100%}
+.lg.named .lgname{min-width:0;overflow:hidden;text-overflow:ellipsis}
+.tile .lg img{max-width:44px}
+.opt .lg img{max-width:44px}
+/* in pick-lists the name is shown next to the logo, so the logo gets a fixed small box (wide wordmarks shrink instead of squeezing the name) */
+.tile .lg img,.opt .lg img{width:30px;max-width:30px;height:22px}
+.fchip .lg img{width:26px;max-width:26px;height:18px}
+.tile .lg .mono,.opt .lg .mono{width:30px;min-width:30px;padding:0}
+@media (max-width:520px){.tile{padding:10px 9px;gap:4px}.tile .lg{gap:5px}.tile .lg img{width:26px;max-width:26px;padding:2px 3px}.tile .lg .mono{width:26px;min-width:26px}.tile>small{font-size:12px}}

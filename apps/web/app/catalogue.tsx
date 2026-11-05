@@ -16,6 +16,21 @@ const KIND = { make: "k-make", brand: "k-brand", category: "k-cat", segment: "k-
 const ROWS = [["make", "Vehicle"], ["segment", "Segment"], ["category", "Category"], ["brand", "Brand"]] as const;
 const Lbl = ({ children }: { children: React.ReactNode }) => <span className="lbl">{children}</span>;
 
+// Logos: name -> image URL, loaded once from /api/logos. A missing logo falls back to a monogram badge, so the list still reads.
+type Logos = { makes: Record<string, string>; brands: Record<string, string>; categories: Record<string, string> };
+const NO_LOGOS: Logos = { makes: {}, brands: {}, categories: {} };
+const initials = (n: string) => n.split(/[\s&/-]+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+function Logo({ kind, name, logos, withName }: { kind: keyof Logos; name: string; logos: Logos; withName?: boolean }) {
+  const url = logos[kind][name];
+  return (
+    <span className={"lg lg-" + kind + (withName ? " named" : "")} title={name}>
+      {url ? <img src={url} alt={withName ? "" : name} loading="lazy" decoding="async" /> : <i className="mono" aria-hidden={withName || undefined}>{initials(name)}</i>}
+      {withName && <span className="lgname">{name}</span>}
+    </span>
+  );
+}
+const makesOf = (oem: string | null) => (oem ? oem.split(" / ").map((s) => s.trim()).filter(Boolean) : []);
+
 const inr = (n: number | null) => (n == null ? null : "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 }));
 const basisText = (b: string) => (b === "ex_tax" ? " (excl. GST)" : b === "incl_tax" ? " (incl. GST)" : "");
 
@@ -30,6 +45,7 @@ export default function Catalogue() {
   const [panel, setPanel] = useState(false);
   const [mobile, setMobile] = useState(false);
   const [toast, setToast] = useState("");
+  const [logos, setLogos] = useState<Logos>(NO_LOGOS);
   const req = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const compact = mobile || view === "compact";
@@ -62,6 +78,7 @@ export default function Catalogue() {
   useEffect(() => {
     fetch("/api/config").then((r) => r.json()).then((c) => { setCfg(c); }).catch(() => {});
     fetch("/api/search?limit=1").then((r) => r.json()).then(setHome).catch(() => {});
+    fetch("/api/logos").then((r) => r.json()).then(setLogos).catch(() => {});
     const u = new URLSearchParams(location.search);
     const nf: F = {}; for (const k of FILTERS) if (u.get(k)) nf[k] = u.get(k)!;
     const nq = u.get("q") ?? "";
@@ -92,6 +109,9 @@ export default function Catalogue() {
     wa(`Hi, is this available?\n${h.brand} ${h.part_no}${h.variant_label ? " (" + h.variant_label + ")" : ""}\n${typeof location !== "undefined" ? location.origin : ""}/#p=${h.id}`);
 
   const facets = data?.facets ?? home?.facets ?? {};
+  // facet rows (choosing a filter) keep the name next to the logo; the result list below shows logos only
+  const FACET_KIND: Record<string, keyof Logos | undefined> = { make: "makes", brand: "brands", category: "categories" };
+  const facetLabel = (k: string, label: string) => (FACET_KIND[k] ? <Logo kind={FACET_KIND[k]!} name={label} logos={logos} withName /> : label);
   const chips = useMemo(() => Object.entries(f).filter(([, v]) => v), [f]);
   const activeN = chips.length;
   const countText = data ? <><b>{data.total.toLocaleString("en-IN")}</b> result{data.total === 1 ? "" : "s"} <small>· {data.ms} ms</small></> : "Searching…";
@@ -112,7 +132,7 @@ export default function Catalogue() {
       </div>
       {panel && <div className="fpanel">{ROWS.map(([k, title]) => (
         <div key={k} className={"frow " + KIND[k]}><span className="flab">{title}</span><div className="fscroll">{(facets[k] ?? []).map((r) => (
-          <button key={r.value} className={"fchip" + (f[k] === r.value ? " on" : "")} onClick={() => toggle(k, r.value)}>{r.label}<small>{r.n}</small></button>))}</div></div>))}</div>}
+          <button key={r.value} className={"fchip" + (f[k] === r.value ? " on" : "")} onClick={() => toggle(k, r.value)}>{facetLabel(k, r.label)}<small>{r.n}</small></button>))}</div></div>))}</div>}
       {hasQuery && <div className="countm">{countText}{data?.corrected_from && <> · for <b>{data.query}</b></>}</div>}
       </header>
 
@@ -124,14 +144,14 @@ export default function Catalogue() {
               <button key={x} className="chipbtn" onClick={() => go(x, {})}>{x}</button>))}</div>
             {([["make", "Browse by vehicle"], ["category", "Browse by category"], ["brand", "Browse by brand"]] as const).map(([k, title]) => (
               <section key={k}><h2 className={KIND[k]}>{title}</h2><div className="tiles">{(home?.facets?.[k] ?? []).map((r) => (
-                <button key={r.value} className={"tile " + KIND[k]} onClick={() => toggle(k, r.value)}><span>{r.label}</span><small>{r.n.toLocaleString("en-IN")}</small></button>))}</div></section>))}
+                <button key={r.value} className={"tile " + KIND[k]} onClick={() => toggle(k, r.value)}><span>{facetLabel(k, r.label)}</span><small>{r.n.toLocaleString("en-IN")}</small></button>))}</div></section>))}
           </>
         ) : (
           <div className="layout">
             <aside className="filters">
               {ROWS.map(([k, title]) => (
                 <div key={k} className={KIND[k]}><h3>{title}</h3>{(facets[k] ?? []).map((r) => (
-                  <button key={r.value} className={"opt" + (f[k] === r.value ? " on" : "")} onClick={() => toggle(k, r.value)}><span>{r.label}</span><span>{r.n}</span></button>))}</div>))}
+                  <button key={r.value} className={"opt" + (f[k] === r.value ? " on" : "")} onClick={() => toggle(k, r.value)}><span>{facetLabel(k, r.label)}</span><span>{r.n}</span></button>))}</div>))}
               <h3 className="plain">MRP (₹)</h3>
               <div className="price">
                 <input inputMode="numeric" placeholder="min" defaultValue={f.min_price} onBlur={(e) => go(q, { ...f, min_price: e.target.value })} />
@@ -153,10 +173,12 @@ export default function Catalogue() {
                   <article key={h.id} className={"card" + (h.image_url && !compact ? " hasimg" : "")} onClick={() => openProduct(h.id)}>
                     {h.image_url && !compact && <div className="ph"><img loading="lazy" src={h.image_url} alt="" /></div>}
                     <div className="body">
-                      <div className="meta"><span className="c-brand">{h.brand}</span>{h.segment && <> · <span className="c-seg">{h.segment}</span></>}{h.category && <> · <span className="c-cat">{h.category}</span></>}</div>
+                      <div className="meta lgrow"><Logo kind="brands" name={h.brand} logos={logos} />{h.segment && <span className="segp c-seg">{h.segment}</span>}{h.category && <Logo kind="categories" name={h.category} logos={logos} />}</div>
                       <div className="title">{h.description || h.part_no}</div>
                       <div className="ids"><button className="pn" title="Tap to copy" onClick={(e) => copy(e, h.part_no)}>{h.part_no}</button>
-                        {h.variant_label && <span className="tag">{h.variant_label}</span>}{h.oem_name && <span className="tag c-make">{h.oem_name}</span>}</div>
+                        {h.variant_label && <span className="tag">{h.variant_label}</span>}
+                        {makesOf(h.oem_name).slice(0, 3).map((m) => <Logo key={m} kind="makes" name={m} logos={logos} />)}
+                        {makesOf(h.oem_name).length > 3 && <span className="tag" title={h.oem_name ?? ""}>+{makesOf(h.oem_name).length - 3}</span>}</div>
                       {h.application && <div className="used"><Lbl>For</Lbl> <span className="val">{h.application}</span></div>}
                     </div>
                     <div className="side">
@@ -179,17 +201,17 @@ export default function Catalogue() {
         <div className="backdrop" onClick={close}>
           <div className="dlg" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <button className="close" onClick={close} aria-label="Close">×</button>
-            <div className="meta"><span className="c-brand">{open.brand}</span>{open.segment && <> · <span className="c-seg">{open.segment}</span></>}{open.category && <> · <span className="c-cat">{open.category}</span></>}</div>
+            <div className="meta lgrow big"><Logo kind="brands" name={open.brand} logos={logos} withName />{open.segment && <span className="segp c-seg">{open.segment}</span>}{open.category && <Logo kind="categories" name={open.category} logos={logos} withName />}</div>
             <h1>{open.description || open.part_no}</h1>
             <div><button className="pn" onClick={(e) => copy(e, open.part_no)}>{open.part_no}</button>{open.variant_label && <span className="tag">{open.variant_label}</span>}</div>
             <dl className="kv">
-              {([["MRP", open.mrp != null ? inr(open.mrp) + basisText(open.price_basis) : "Price on request"], ["Used for", open.application], ["Vehicle make", open.oem_name],
+              {([["MRP", open.mrp != null ? inr(open.mrp) + basisText(open.price_basis) : "Price on request"], ["Used for", open.application], ["Vehicle make", makesOf(open.oem_name).length ? <span className="lgrow wrap">{makesOf(open.oem_name).map((m) => <Logo key={m} kind="makes" name={m} logos={logos} withName />)}</span> : null],
                 ["OEM code (as printed)", open.oem_raw], ["Segment", open.segment], ["HSN", open.hsn], ["GST", open.gst_pct != null ? open.gst_pct + "%" : null],
                 ["Min. order qty", open.moq], ["Pack", open.pack_qty ? `${open.pack_qty} ${open.unit ?? ""}` : null],
                 ["Price list date", open.price_effective_from ? new Date(open.price_effective_from).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : null],
                 ["OEM / reference nos.", open.cross_refs?.length ? open.cross_refs.map((r: any) => r.ref_part_no).join(" · ") : null],
                 ["Availability", "Ask us — most items are in stock or available within ~7 days"]] as [string, any][])
-                .filter(([, v]) => v != null && v !== "").map(([k, v]) => (<div key={k} style={{ display: "contents" }}><dt className="lbl">{k}</dt><dd className="val">{String(v)}</dd></div>))}
+                .filter(([, v]) => v != null && v !== "").map(([k, v]) => (<div key={k} style={{ display: "contents" }}><dt className="lbl">{k}</dt><dd className="val">{typeof v === "object" ? v : String(v)}</dd></div>))}
             </dl>
             <p><a className="btn primary" style={{ textDecoration: "none", display: "inline-block" }} href={askLink(open)} target="_blank" rel="noopener">Ask availability on WhatsApp</a></p>
             {([["Other sizes / variants", open.variants], ["Same part number, other brands", open.same_number_elsewhere], ["Related parts", open.related]] as const)
