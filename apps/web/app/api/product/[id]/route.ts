@@ -1,10 +1,11 @@
 import { product } from "@/lib/search";
+import { withRetry } from "@/lib/db";
 import { limited } from "@/lib/limit";
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const rl = limited(req);
   if (rl) return rl;
   const { id } = await params;
-  const p = await product(id).catch(() => null);
+  const p = await withRetry(() => product(id)).catch(() => null);
   return p ? Response.json(p) : Response.json({ detail: "not found" }, { status: 404 });
 }

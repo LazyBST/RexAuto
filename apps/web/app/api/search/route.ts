@@ -1,4 +1,5 @@
 import { search } from "@/lib/search";
+import { withRetry } from "@/lib/db";
 import { limited } from "@/lib/limit";
 
 const MAX_DEPTH = Number(process.env.MAX_RESULT_DEPTH ?? 300);
@@ -14,9 +15,9 @@ export async function GET(req: Request) {
   const f = Object.fromEntries(["brand", "make", "segment", "category", "min_price", "max_price"].map((k) => [k, u.get(k) ?? ""]));
   if ((f.min_price && isNaN(Number(f.min_price))) || (f.max_price && isNaN(Number(f.max_price)))) return Response.json({ detail: "bad filter value" }, { status: 400 });
   try {
-    return Response.json(await search(q, f, limit, offset));
+    return Response.json(await withRetry(() => search(q, f, limit, offset)));
   } catch (e: any) {
-    console.error("search failed", e?.code ?? e?.message);
+    console.error("search failed", e?.code, String(e?.message ?? "").slice(0, 200));
     return Response.json({ detail: "database unavailable", code: String(e?.code ?? "").slice(0, 40) }, { status: 503 });
   }
 }
