@@ -29,6 +29,9 @@ function Logo({ kind, name, logos, withName }: { kind: keyof Logos; name: string
     </span>
   );
 }
+// Segment shown as a vehicle emoji in the lists: car, light truck, heavy truck, tractor, and a crane for "other" (construction / industrial)
+const SEG_EMOJI: Record<string, string> = { CAR: "🚗", LCV: "🚚", HCV: "🚛", TRACTOR: "🚜", OTHER: "🏗️" };
+const segEmoji = (s: string | null | undefined) => (s ? SEG_EMOJI[s.toUpperCase()] ?? "🚘" : "");
 const makesOf = (oem: string | null) => (oem ? oem.split(" / ").map((s) => s.trim()).filter(Boolean) : []);
 
 const inr = (n: number | null) => (n == null ? null : "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 }));
@@ -159,7 +162,7 @@ export default function Catalogue() {
   const facets = data?.facets ?? home?.facets ?? {};
   // facet rows (choosing a filter) keep the name next to the logo; the result list below shows logos only
   const FACET_KIND: Record<string, keyof Logos | undefined> = { make: "makes", brand: "brands", category: "categories" };
-  const facetLabel = (k: string, label: string) => (FACET_KIND[k] ? <Logo kind={FACET_KIND[k]!} name={label} logos={logos} withName /> : label);
+  const facetLabel = (k: string, label: string) => (FACET_KIND[k] ? <Logo kind={FACET_KIND[k]!} name={label} logos={logos} withName /> : k === "segment" ? <>{segEmoji(label)} {label}</> : label);
   const chips = useMemo(() => Object.entries(f).filter(([, v]) => v), [f]);
   const activeN = chips.length;
   const countText = data ? <><b>{data.total.toLocaleString("en-IN")}</b> result{data.total === 1 ? "" : "s"} <small>· {data.ms} ms</small></> : "Searching…";
@@ -221,7 +224,7 @@ export default function Catalogue() {
                   <article key={h.id} className={"card" + (h.image_url && !compact ? " hasimg" : "")} onClick={() => openProduct(h.id)}>
                     {h.image_url && !compact && <div className="ph"><img loading="lazy" src={h.image_url} alt="" /></div>}
                     <div className="body">
-                      <div className="meta lgrow"><Logo kind="brands" name={h.brand} logos={logos} />{h.segment && <span className="segp c-seg">{h.segment}</span>}{h.category && <Logo kind="categories" name={h.category} logos={logos} />}</div>
+                      <div className="meta lgrow"><Logo kind="brands" name={h.brand} logos={logos} />{h.segment && <span className="segemoji" title={h.segment} aria-label={h.segment} role="img">{segEmoji(h.segment)}</span>}{h.category && <Logo kind="categories" name={h.category} logos={logos} />}</div>
                       <div className="title">{h.description || h.part_no}</div>
                       <div className="ids"><button className="pn" title="Tap to copy" onClick={(e) => copy(e, h.part_no)}>{h.part_no}</button>
                         {h.variant_label && <span className="tag">{h.variant_label}</span>}
@@ -249,12 +252,12 @@ export default function Catalogue() {
         <div className="backdrop" onClick={close}>
           <div className="dlg" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
             <button className="close" onClick={close} aria-label="Close">×</button>
-            <div className="meta lgrow big"><Logo kind="brands" name={open.brand} logos={logos} withName />{open.segment && <span className="segp c-seg">{open.segment}</span>}{open.category && <Logo kind="categories" name={open.category} logos={logos} withName />}</div>
+            <div className="meta lgrow big"><Logo kind="brands" name={open.brand} logos={logos} withName />{open.segment && <span className="segp c-seg"><span aria-hidden>{segEmoji(open.segment)}</span> {open.segment}</span>}{open.category && <Logo kind="categories" name={open.category} logos={logos} withName />}</div>
             <h1>{open.description || open.part_no}</h1>
             <div><button className="pn" onClick={(e) => copy(e, open.part_no)}>{open.part_no}</button>{open.variant_label && <span className="tag">{open.variant_label}</span>}</div>
             <dl className="kv">
               {([["MRP", open.mrp != null ? inr(open.mrp) + basisText(open.price_basis) : "Price on request"], ["Used for", open.application], ["Vehicle make", makesOf(open.oem_name).length ? <span className="lgrow wrap">{makesOf(open.oem_name).map((m) => <Logo key={m} kind="makes" name={m} logos={logos} withName />)}</span> : null],
-                ["OEM code (as printed)", open.oem_raw], ["Segment", open.segment], ["HSN", open.hsn], ["GST", open.gst_pct != null ? open.gst_pct + "%" : null],
+                ["OEM code (as printed)", open.oem_raw], ["Segment", open.segment ? <span>{segEmoji(open.segment)} {open.segment}</span> : null], ["HSN", open.hsn], ["GST", open.gst_pct != null ? open.gst_pct + "%" : null],
                 ["Min. order qty", open.moq], ["Pack", open.pack_qty ? `${open.pack_qty} ${open.unit ?? ""}` : null],
                 ["Price list date", open.price_effective_from ? new Date(open.price_effective_from).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : null],
                 ["OEM / reference nos.", open.cross_refs?.length ? open.cross_refs.map((r: any) => r.ref_part_no).join(" · ") : null],
