@@ -47,6 +47,10 @@ export default function Catalogue() {
   const [toast, setToast] = useState("");
   const [logos, setLogos] = useState<Logos>(NO_LOGOS);
   const req = useRef(0);
+  const sidRef = useRef("");
+  const sentinel = useRef<HTMLDivElement>(null);
+  const loadingMore = useRef(false);
+  const lastTracked = useRef("");
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const compact = mobile || view === "compact";
   useEffect(() => {
@@ -63,6 +67,35 @@ export default function Catalogue() {
   }, [open]);
   const hasQuery = !!q.trim() || Object.values(f).some(Boolean);
 
+  // usage analytics: anonymous tab-session id + fire-and-forget events (see /api/track)
+  const getSid = () => {
+    if (sidRef.current) return sidRef.current;
+    let s = "";
+    try { s = sessionStorage.getItem("rx_sid") || ""; if (!s) { s = crypto.randomUUID(); sessionStorage.setItem("rx_sid", s); } }
+    catch { s = Math.random().toString(36).slice(2) + Date.now().toString(36); }
+    return (sidRef.current = s);
+  };
+  const track = (body: Record<string, unknown>) => {
+    try {
+      const payload = JSON.stringify({ sid: getSid(), ...body });
+      if (navigator.sendBeacon) navigator.sendBeacon("/api/track", new Blob([payload], { type: "application/json" }));
+      else fetch("/api/track", { method: "POST", body: payload, keepalive: true, headers: { "Content-Type": "application/json" } }).catch(() => {});
+    } catch {}
+  };
+
+  // one "search" event per settled search (the user stopped typing / changing filters for 1.5 s), never per keystroke
+  useEffect(() => {
+    if (!data || !hasQuery) return;
+    const key = JSON.stringify([q.trim().toLowerCase(), f]);
+    const t = setTimeout(() => {
+      if (lastTracked.current === key) return;
+      lastTracked.current = key;
+      track({ t: "search", q: q.trim(), f, total: data.total, ms: data.ms, corrected: !!data.corrected_from, top: data.hits.slice(0, 10).map((h) => h.id) });
+    }, 1500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, q, f, hasQuery]);
+
   const run = useCallback(async (query: string, filters: F, offset = 0, append = false) => {
     const id = ++req.current;
     const p = new URLSearchParams({ q: query, limit: String(PAGE), offset: String(offset) });
@@ -73,6 +106,20 @@ export default function Catalogue() {
     if (id !== req.current) return;
     setData((prev) => (append && prev ? { ...d, hits: prev.hits.concat(d.hits) } : d));
   }, []);
+
+  // infinite scroll: when the "Loading more…" marker nears the screen, fetch the next page (up to DEPTH results)
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !data || data.hits.length >= data.total || data.hits.length >= DEPTH) return;
+    const io = new IntersectionObserver((es) => {
+      if (es[0].isIntersecting && !loadingMore.current) {
+        loadingMore.current = true;
+        run(q, f, data.hits.length, true).finally(() => { loadingMore.current = false; });
+      }
+    }, { rootMargin: "700px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [data, q, f, run]);
 
   // first load: config, url state, home tiles
   useEffect(() => {
@@ -85,7 +132,7 @@ export default function Catalogue() {
     setQ(nq); setF(nf);
     if (nq || Object.keys(nf).length) run(nq, nf);
     const m = location.hash.match(/^#p=([0-9a-f-]{36})$/);
-    if (m) openProduct(m[1]);
+    if (m) openProduct(m[1], "link");
     setView((localStorage.getItem("view") as any) === "compact" ? "compact" : "list");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -98,9 +145,10 @@ export default function Catalogue() {
   const go = (query: string, filters: F) => { setQ(query); setF(filters); sync(query, filters); if (query.trim() || Object.values(filters).some(Boolean)) run(query, filters); else setData(null); };
   const onType = (v: string) => { setQ(v); clearTimeout(timer.current); timer.current = setTimeout(() => go(v, f), 180); };
   const toggle = (k: keyof F, v: string) => { go(q, { ...f, [k]: f[k] === v ? "" : v }); window.scrollTo({ top: 0 }); };
-  const openProduct = async (id: string) => {
+  const openProduct = async (id: string, src: "list" | "related" | "link" = "list") => {
     const r = await fetch("/api/product/" + id); if (!r.ok) return;
     setOpen(await r.json()); history.replaceState(null, "", location.search + "#p=" + id);
+    track({ t: "view", id, src, q: q.trim() });
   };
   const close = () => { setOpen(null); history.replaceState(null, "", location.pathname + location.search); };
   const copy = (e: React.MouseEvent, s: string) => { e.stopPropagation(); navigator.clipboard?.writeText(s); setToast("Copied " + s); setTimeout(() => setToast(""), 1400); };
@@ -189,13 +237,13 @@ export default function Catalogue() {
                   </article>))}
               </div>
               {data && !data.hits.length && <div className="empty"><p><b>No results.</b></p><p>Try the part number or the vehicle name, or <a href={wa("Hi, I could not find: " + q)} target="_blank" rel="noopener">ask us on WhatsApp</a>.</p></div>}
-              {data && data.hits.length < data.total && data.hits.length < DEPTH && <button className="btn more" onClick={() => run(q, f, data.hits.length, true)}>Show more ({data.total - data.hits.length} left)</button>}
+              {data && data.hits.length < data.total && data.hits.length < DEPTH && <div ref={sentinel} className="sentinel" aria-live="polite">Loading more…</div>}
               {data && data.hits.length < data.total && data.hits.length >= DEPTH && <p className="hint" style={{ textAlign: "center" }}>Showing the first {DEPTH} of {data.total.toLocaleString("en-IN")}. Narrow the search with a make, category or part number.</p>}
             </section>
           </div>
         )}
       </main>
-      <VisitorCounter />
+      <VisitorCounter hidden={hasQuery} />
 
       {open && (
         <div className="backdrop" onClick={close}>
@@ -217,7 +265,7 @@ export default function Catalogue() {
             {([["Other sizes / variants", open.variants], ["Same part number, other brands", open.same_number_elsewhere], ["Related parts", open.related]] as const)
               .filter(([, rows]) => rows?.length).map(([title, rows]) => (
               <div key={title}><h2>{title}</h2><div className="rel">{rows.map((x: Hit) => (
-                <button key={x.id} onClick={() => openProduct(x.id)}><b>{x.brand}</b> <span className="pnx">{x.part_no}</span> {x.variant_label ? `(${x.variant_label})` : ""} — {x.description} {x.mrp != null ? "· " + inr(x.mrp) : ""}</button>))}</div></div>))}
+                <button key={x.id} onClick={() => openProduct(x.id, "related")}><b>{x.brand}</b> <span className="pnx">{x.part_no}</span> {x.variant_label ? `(${x.variant_label})` : ""} — {x.description} {x.mrp != null ? "· " + inr(x.mrp) : ""}</button>))}</div></div>))}
             {open.images?.length > 0 && <div><h2>Photos</h2><div className="photos">{open.images.map((i: any) => <img key={i.url} src={i.url} alt="" />)}</div></div>}
           </div>
         </div>

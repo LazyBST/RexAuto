@@ -24,7 +24,8 @@ function Digit({ v }: { v: string }) {
   );
 }
 
-export default function VisitorCounter() {
+// `hidden`: keep counting the visit but don't show the calendar while a search is on screen (it belongs to the empty home screen)
+export default function VisitorCounter({ hidden = false }: { hidden?: boolean }) {
   const [total, setTotal] = useState<number | null>(null);
   const done = useRef(false);
 
@@ -50,7 +51,7 @@ export default function VisitorCounter() {
   if (total == null) return null;
   const digits = String(total).padStart(6, "0").split("");
   return (
-    <footer className="visits" aria-label={`${total.toLocaleString("en-IN")} visitors`}>
+    <footer className="visits" hidden={hidden} aria-label={`${total.toLocaleString("en-IN")} visitors`}>
       <div className="cal">
         <div className="cal-head"><i /><i /><span>Visitors</span><i /><i /></div>
         <div className="cal-body">{digits.map((d, i) => <Digit key={digits.length - i} v={d} />)}</div>

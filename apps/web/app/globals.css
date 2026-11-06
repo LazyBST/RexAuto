@@ -231,3 +231,5 @@ h2.k-make,h2.k-brand,h2.k-cat,h2.k-seg{color:var(--k)}
 .fchip .lg img{width:26px;max-width:26px;height:18px}
 .tile .lg .mono,.opt .lg .mono{width:30px;min-width:30px;padding:0}
 @media (max-width:520px){.tile{padding:10px 9px;gap:4px}.tile .lg{gap:5px}.tile .lg img{width:26px;max-width:26px;padding:2px 3px}.tile .lg .mono{width:26px;min-width:26px}.tile>small{font-size:12px}}
+.visits[hidden]{display:none}
+.sentinel{text-align:center;color:var(--mute);font-size:13px;padding:18px 0 26px}
