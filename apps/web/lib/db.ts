@@ -7,7 +7,7 @@ const g = globalThis as unknown as { __sql?: postgres.Sql };
 const opts = {
   // Few connections per instance: Supabase's free pooler allows ~15 in total across ALL serverless instances, and idle ones
   // held by frozen instances are what exhaust it. Close idle connections fast and recycle them.
-  max: Number(process.env.DB_POOL_MAX ?? 2), prepare: false, idle_timeout: 4, max_lifetime: 300, connect_timeout: 8,
+  max: Number(process.env.DB_POOL_MAX ?? 1), prepare: false, idle_timeout: 4, max_lifetime: 300, connect_timeout: 8,
   connection: { statement_timeout: 15000 },
 };
 const url = process.env.DATABASE_URL;
