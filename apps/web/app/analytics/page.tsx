@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { loadAnalytics, type Dim } from "@/lib/analytics";
+import { withRetry } from "@/lib/db";
 import "./analytics.css";
 
 // Not linked from anywhere in the app: reached only by typing /analytics. Kept out of search engines.
@@ -56,7 +57,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
   if (need && sp.key !== need) notFound();
   const days = ["7", "30", "90", "0"].includes(sp.days ?? "") ? Number(sp.days) : 30;
   let d: Awaited<ReturnType<typeof loadAnalytics>>;
-  try { d = await loadAnalytics(days); }
+  try { d = await withRetry(() => loadAnalytics(days), 25000); }
   catch (e: any) { return <main className="an"><h1>Analytics</h1><p className="mute">Could not load: {String(e?.message ?? e?.code ?? "database error").slice(0, 300)}</p></main>; }
   const s = d.summary;
   const keyQ = need ? `&key=${encodeURIComponent(sp.key ?? "")}` : "";

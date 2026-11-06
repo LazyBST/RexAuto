@@ -1,13 +1,13 @@
-import { sql } from "@/lib/db";
+import { sql, withRetry } from "@/lib/db";
 
 // Name -> image URL maps for vehicle makes, product brands and categories. Tiny and slow-changing, so it is cached hard.
 export async function GET() {
   try {
-    const [makes, brands, cats] = await Promise.all([
+    const [makes, brands, cats] = await withRetry(() => Promise.all([
       sql`select name, logo_url from makes where logo_url is not null`,
       sql`select name, logo_url from brands where logo_url is not null`,
       sql`select name, icon_url from categories where icon_url is not null`,
-    ]);
+    ]));
     const body = {
       makes: Object.fromEntries(makes.map((r) => [r.name, r.logo_url])),
       brands: Object.fromEntries(brands.map((r) => [r.name, r.logo_url])),
